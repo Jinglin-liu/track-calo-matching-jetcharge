@@ -22,24 +22,39 @@ macro_dir=$tutorial_dir/macro
 echo rsyncing from $macro_dir
 echo running: $this_script $*
 
-if [[ ! -z "$_CONDOR_SCRATCH_DIR" && -d $_CONDOR_SCRATCH_DIR ]]
-then
-  cd $_CONDOR_SCRATCH_DIR
-  rsync -av $macro_dir/* .
-else
-  echo condor scratch NOT set
-  exit -1
+# Resolve input paths before changing directories.
+# Condor may supply a relative file list staged in its scratch directory.
+nEvents=${1:?Missing number of events}
+inDst=${2:?Missing input ROOT file or list}
+outDir=${3:?Missing output directory}
+nSkip=${4:-0}
+
+launch_dir=$PWD
+if [[ "$inDst" != /* ]]; then
+  if [[ -e "$launch_dir/$inDst" ]]; then
+    inDst=$(readlink -f "$launch_dir/$inDst")
+  elif [[ -n "${_CONDOR_SCRATCH_DIR:-}" && -e "$_CONDOR_SCRATCH_DIR/$inDst" ]]; then
+    inDst=$(readlink -f "$_CONDOR_SCRATCH_DIR/$inDst")
+  fi
 fi
 
-nEvents=$1
-inDst=$2
-outDir=$3
-nSkip=$4
+if [[ -n "${_CONDOR_SCRATCH_DIR:-}" ]]; then
+  if [[ ! -d "$_CONDOR_SCRATCH_DIR" ]]; then
+    echo "ERROR: Condor scratch directory does not exist: $_CONDOR_SCRATCH_DIR" >&2
+    exit 1
+  fi
+  echo "Condor mode: $_CONDOR_SCRATCH_DIR"
+  cd "$_CONDOR_SCRATCH_DIR" || exit 1
+  rsync -av "$macro_dir/" ./ || exit 1
+else
+  echo "Interactive mode: $macro_dir"
+  cd "$macro_dir" || exit 1
+fi
 
-if [[ "${inDst}" == *.root ]]; then
-  getinputfiles.pl $inDst
-elif [[ "${inDst}" == *.list ]]; then
-  getinputfiles.pl --filelist $inDst
+if [[ "$inDst" == *.root ]]; then
+  getinputfiles.pl "$inDst" || exit 1
+elif [[ "$inDst" == *.list ]]; then
+  getinputfiles.pl --filelist "$inDst" || exit 1
 fi
 
 # print the environment - needed for debugging
