@@ -1,0 +1,102 @@
+# C/C++ compilation products
+*.d
+*.o
+*.obj
+*.lo
+*.slo
+*.gch
+*.pch
+*.dwo
+*.so
+*.so.*
+*.dylib
+*.dll
+*.a
+*.la
+*.lai
+*.lib
+*.mod
+*.smod
+*.pcm
+*_Dict.cc
+
+# Executables and debugger/linker output
+*.exe
+*.out
+*.app
+*.ilk
+*.pdb
+
+# CMake and generic build directories
+/build/
+/Build/
+/build-*/
+.deps/
+.libs/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+Makefile
+
+# Autotools products used by sPHENIX packages
+Makefile.in
+aclocal.m4
+autom4te.cache/
+compile
+configure
+config.guess
+config.sub
+depcomp
+install-sh
+libtool
+ltmain.sh
+missing
+stamp-h1
+*.status
+testexternals.cc
+testexternals_*
+
+# Local installation and test products
+/install/
+Testing/
+.cache/
+
+# ROOT, sPHENIX, and tutorial runtime output
+*.root
+*.list
+!**/example*.list
+/fileLists/
+/root/
+/results/
+/log/
+/previous_analysis/
+analysis/figure/
+*.log
+*.err
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+\#*
+.\#*
+
+# Editors and IDEs
+/.cproject
+/.project
+/.vscode/
+*.tmproj
+tmtags
+.redcar/
+.rvmrc
+*.rbc
+
+# Operating-system metadata
+.DS_Store
+._*
+
+# Dependency managers
+vcpkg_installed/
