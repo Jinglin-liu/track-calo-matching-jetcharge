@@ -33,9 +33,11 @@ AM_CPPFLAGS = \
   -DHomogeneousField
 
 pkginclude_HEADERS = \
+  JetChargeTreeMaker.h \\
   TrackToCalo.h
 
 libtrack_to_calo_la_SOURCES = \
+  JetChargeTreeMaker.cc \\
   TrackToCalo.cc
 
 ################################################
