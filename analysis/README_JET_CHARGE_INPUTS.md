@@ -13,7 +13,7 @@ before processing physics data.
   Fun4All processing iteration and are therefore geometrically comparable
   *only after the input streams have been verified synchronized*.
 - The module **does not** use EMCal matching to select charged tracks.
-- No jet charge or geometric track/jet matching is calculated yet.
+- Axis-based geometric track/jet matching and pT-weighted jet charge are calculated per jet.
 - The existing TrackToCaloTree remains unchanged.
 
 ### Inputs
@@ -114,6 +114,39 @@ JetChargeInputTree->Scan("run:event:event_index:n_tracks:n_jets");
 5. Run a small event sample on an sPHENIX node and confirm compilation,
    expected input nodes, stable event counts, and sensible kinematics.
    The GitHub changes were not compiled against the site's installed release.
+
+## Jet-charge matching and output
+
+For each accepted jet, the module loops over all selected tracks and computes
+`dR = hypot(track_eta - jet_eta, remainder(track_phi - jet_phi, 2*pi))`.
+If `dR < 0.4`, that track contributes to the jet charge:
+
+`Q_kappa = sum(q_track * pow(track_pt, kappa)) / pow(jet_pt, kappa)`.
+
+Default `kappa=1.0` and matching radius `R=0.4`. To change these, call
+`jetTree->setJetChargeKappa(0.5)` and/or
+`jetTree->setTrackJetMatchR(0.4)` in the macro before registering it.
+These settings are also saved as event-level branches `jet_charge_kappa`
+and `track_jet_match_r`.
+
+New jet-level vector branches:
+
+- `jet_charge`: calculated charge, NaN for zero-pT jet
+- `jet_charge_numerator`: signed weighted track pT sum
+- `jet_n_matched_tracks`: number of accepted tracks inside cone
+- `jet_matched_track_pt_sum`: scalar matched-track pT sum
+
+Flattened matching arrays:
+
+- `jet_track_offset`: length `n_jets + 1`; jet j matches in
+  `[jet_track_offset[j], jet_track_offset[j+1])`
+- `jet_track_index`: indices into event-level `track_*` arrays
+- `jet_track_delta_r`: corresponding match distance
+
+No match gives charge zero for positive-pT jets. Track associations are not
+exclusive: a track within R of two jet axes contributes to both. Track
+directions use reconstructed momentum eta/phi, **not** track extrapolations
+at the calorimeter surface.
 
 ## Offline geometric association
 
