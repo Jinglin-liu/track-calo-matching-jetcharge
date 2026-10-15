@@ -264,7 +264,7 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
         const unsigned int channel = component.second;
         if (channel < towers->size())
         {
-          const auto* tower = towers->get_tower_at_channel(channel);
+          auto* tower = towers->get_tower_at_channel(channel);
           if (tower) energy = tower->get_energy();
           const auto key = towers->encode_key(channel);
           ieta = towers->getTowerEtaBin(key);
