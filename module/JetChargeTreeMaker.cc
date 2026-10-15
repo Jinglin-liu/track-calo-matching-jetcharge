@@ -1,5 +1,7 @@
 #include "JetChargeTreeMaker.h"
 
+#include <calobase/TowerInfo.h>
+#include <calobase/TowerInfoContainer.h>
 #include <ffaobjects/EventHeader.h>
 #include <fun4all/Fun4AllReturnCodes.h>
 #include <globalvertex/GlobalVertex.h>
@@ -112,6 +114,9 @@ int JetChargeTreeMaker::Init(PHCompositeNode*)
   BRANCH("jet_component_offset", m_jetComponentOffset);
   BRANCH("jet_component_source", m_jetComponentSource);
   BRANCH("jet_component_id", m_jetComponentId);
+  BRANCH("jet_component_energy", m_jetComponentEnergy);
+  BRANCH("jet_component_ieta", m_jetComponentIEta);
+  BRANCH("jet_component_iphi", m_jetComponentIPhi);
 #undef BRANCH
   return Fun4AllReturnCodes::EVENT_OK;
 }
@@ -138,6 +143,7 @@ void JetChargeTreeMaker::resetBranches()
   CLEAR(m_jetEta); CLEAR(m_jetPhi); CLEAR(m_jetMass);
   CLEAR(m_jetEmcalFrac); CLEAR(m_jetIhcalFrac); CLEAR(m_jetOhcalFrac);
   CLEAR(m_jetComponentOffset); CLEAR(m_jetComponentSource); CLEAR(m_jetComponentId);
+  CLEAR(m_jetComponentEnergy); CLEAR(m_jetComponentIEta); CLEAR(m_jetComponentIPhi);
 #undef CLEAR
 }
 
@@ -204,6 +210,20 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
     m_trackDca3dZ.push_back(track->get_dca3d_z());
   }
 
+  // The same tower collections that were used to construct the calorimeter
+  // jets provide constituent energies and detector indices.
+  auto* cemc = findNode::getClass<TowerInfoContainer>(
+      topNode, "TOWERINFO_CALIB_CEMC_RETOWER");
+  auto* ihcal = findNode::getClass<TowerInfoContainer>(
+      topNode, "TOWERINFO_CALIB_HCALIN");
+  auto* ohcal = findNode::getClass<TowerInfoContainer>(
+      topNode, "TOWERINFO_CALIB_HCALOUT");
+  if (!cemc || !ihcal || !ohcal)
+  {
+    std::cerr << Name() << ": missing calibrated/retowered tower collections" << '\\n';
+    return Fun4AllReturnCodes::ABORTRUN;
+  }
+
   m_jetComponentOffset.push_back(0);
   for (auto* jet : *jets)
   {
@@ -228,6 +248,32 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
     {
       m_jetComponentSource.push_back(static_cast<int>(component.first));
       m_jetComponentId.push_back(component.second);
+      TowerInfoContainer* towers = nullptr;
+      switch (component.first)
+      {
+        case Jet::CEMC_TOWERINFO_RETOWER: towers = cemc; break;
+        case Jet::HCALIN_TOWERINFO: towers = ihcal; break;
+        case Jet::HCALOUT_TOWERINFO: towers = ohcal; break;
+        default: break;
+      }
+      float energy = std::numeric_limits<float>::quiet_NaN();
+      int ieta = -1;
+      int iphi = -1;
+      if (towers)
+      {
+        const unsigned int channel = component.second;
+        if (channel < towers->size())
+        {
+          const auto* tower = towers->get_tower_at_channel(channel);
+          if (tower) energy = tower->get_energy();
+          const auto key = towers->encode_key(channel);
+          ieta = towers->getTowerEtaBin(key);
+          iphi = towers->getTowerPhiBin(key);
+        }
+      }
+      m_jetComponentEnergy.push_back(energy);
+      m_jetComponentIEta.push_back(ieta);
+      m_jetComponentIPhi.push_back(iphi);
     }
     m_jetComponentOffset.push_back(
         static_cast<unsigned int>(m_jetComponentId.size()));
