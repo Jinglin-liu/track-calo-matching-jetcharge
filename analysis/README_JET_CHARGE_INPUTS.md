@@ -143,10 +143,12 @@ Flattened matching arrays:
 - `jet_track_index`: indices into event-level `track_*` arrays
 - `jet_track_delta_r`: corresponding match distance
 
-No match gives charge zero for positive-pT jets. Track associations are not
-exclusive: a track within R of two jet axes contributes to both. Track
-directions use reconstructed momentum eta/phi, **not** track extrapolations
-at the calorimeter surface.
+No match gives charge zero for positive-pT jets. Track associations are
+**exclusive**: each selected track is assigned only to the nearest stored
+jet axis if its DeltaR is strictly less than the configured matching radius.
+The first stored jet wins exact distance ties. Jets rejected by jet pT cuts
+are not eligible for assignment. Track directions use reconstructed momentum
+eta/phi, **not** track extrapolations at the calorimeter surface.
 
 ## Offline geometric association
 
