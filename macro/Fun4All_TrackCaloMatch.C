@@ -30,10 +30,17 @@
 
 #include <trackreco/PHActsTrackProjection.h>
 
+#include <jetbase/FastJetAlgo.h>
+#include <jetbase/Jet.h>
+#include <jetbase/JetReco.h>
+#include <jetbase/TowerJetInput.h>
+#include <jetbackground/RetowerCEMC.h>
+
 #include <caloreco/CaloGeomMapping.h>
 #include <caloreco/RawClusterBuilderTemplate.h>
 
 #include <track_to_calo/TrackToCalo.h>
+#include <track_to_calo/JetChargeTreeMaker.h>
 #include <trackbase_historic/SvtxTrack.h>
 
 #include <stdio.h>
@@ -56,6 +63,8 @@ R__LOAD_LIBRARY(libffamodules.so)
 R__LOAD_LIBRARY(libphool.so)
 R__LOAD_LIBRARY(libcdbobjects.so)
 R__LOAD_LIBRARY(libtrack_to_calo.so)
+R__LOAD_LIBRARY(libjetbase.so)
+R__LOAD_LIBRARY(libjetbackground.so)
 
 bool IsListFile = false;
 bool IsDstFile = false;
@@ -126,7 +135,8 @@ void Fun4All_TrackCaloMatch(const int nEvents = 100,
                 const std::string inputDST = "DST_TRKR_SEED_run3pp_ana556_2025p013_v002-00079516-00000.root",
                 const std::string outDir = "./",
                 const int nSkip = 0,
-                const bool convertSeeds = false)
+                const bool convertSeeds = false,
+                const bool writeJetChargeTree = false)
 {
     auto se = Fun4AllServer::instance();
     se->Verbosity(1);
@@ -445,6 +455,56 @@ void Fun4All_TrackCaloMatch(const int nEvents = 100,
         ClusterBuilder->LoadProfile(emc_prof);
         ClusterBuilder->set_UseTowerInfo(1); // to use towerinfo objects rather than old RawTower
         se->registerSubsystem(ClusterBuilder);
+    }
+
+
+    // Optional event-level jet-charge inputs. Register after calibrated towers
+    // and global vertex reconstruction, before the output writer. Retowered
+    // CEMC, HCALIN and HCALOUT are clustered into anti-kT R=0.4 calo jets.
+    // Track-jet geometric association is intentionally deferred to analysis.
+    if (writeJetChargeTree)
+    {
+        if (!get_calo_info)
+        {
+            std::cerr << "JetChargeTreeMaker requires get_calo_info" << std::endl;
+            gSystem->Exit(1);
+            return;
+        }
+
+        auto *retower = new RetowerCEMC("RetowerCEMC_JetCharge");
+        retower->set_towerinfo(true);
+        retower->set_frac_cut(0.5);
+        se->registerSubsystem(retower);
+
+        auto *jetReco = new JetReco("JetReco_JetCharge");
+        jetReco->add_input(new TowerJetInput(Jet::CEMC_TOWERINFO_RETOWER));
+        jetReco->add_input(new TowerJetInput(Jet::HCALIN_TOWERINFO));
+        jetReco->add_input(new TowerJetInput(Jet::HCALOUT_TOWERINFO));
+        jetReco->add_algo(new FastJetAlgo(Jet::ANTIKT, 0.4),
+                          "AntiKt_unsubtracted_r04");
+        jetReco->set_algo_node("ANTIKT");
+        jetReco->set_input_node("TOWER");
+        se->registerSubsystem(jetReco);
+
+        std::string jetTreePath = outDir;
+        if (!jetTreePath.empty() && jetTreePath.back() != '/')
+        {
+            jetTreePath += "/";
+        }
+        gSystem->mkdir(jetTreePath.c_str(), true);
+        jetTreePath += "jet_charge_inputs_" + nice_runnumber.str()
+                    + "_" + nice_segment.str()
+                    + "_" + nice_skip.str() + ".root";
+
+        auto *jetTree = new JetChargeTreeMaker("JetChargeTreeMaker");
+        jetTree->setOutputFile(jetTreePath);
+        jetTree->setJetNode("AntiKt_unsubtracted_r04");
+        jetTree->setTrackPtMin(0.2);
+        jetTree->setTrackQualityMax(300.);
+        jetTree->setMinTpcClusters(22);
+        jetTree->requireCrossingZero(true);
+        jetTree->setJetPtMin(0.);
+        se->registerSubsystem(jetTree);
     }
 
     // ---------------------------------------------------------------------
