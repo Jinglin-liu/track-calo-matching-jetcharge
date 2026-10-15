@@ -28,6 +28,11 @@ nEvents=${1:?Missing number of events}
 inDst=${2:?Missing input ROOT file or list}
 outDir=${3:?Missing output directory}
 nSkip=${4:-0}
+writeJetChargeTree=${5:-false}
+if [[ "$writeJetChargeTree" != true && "$writeJetChargeTree" != false ]]; then
+  echo 'ERROR: fifth argument must be true or false' >&2
+  exit 1
+fi
 
 launch_dir=$PWD
 if [[ "$inDst" != /* ]]; then
@@ -52,7 +57,9 @@ else
 fi
 
 if [[ "$inDst" == *.root ]]; then
-  getinputfiles.pl "$inDst" || exit 1
+  if [[ ! -f "$inDst" ]]; then
+    getinputfiles.pl "$inDst" || exit 1
+  fi
 elif [[ "$inDst" == *.list ]]; then
   getinputfiles.pl --filelist "$inDst" || exit 1
 fi
