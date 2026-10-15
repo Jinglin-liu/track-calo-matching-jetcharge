@@ -77,7 +77,8 @@ class JetChargeTreeMaker : public SubsysReco
   std::vector<float> m_jetEmcalFrac, m_jetIhcalFrac, m_jetOhcalFrac;
   // Flattened constituent array: jet j owns [offset[j], offset[j+1]).
   std::vector<unsigned int> m_jetComponentOffset, m_jetComponentId;
-  std::vector<int> m_jetComponentSource;
+  std::vector<int> m_jetComponentSource, m_jetComponentIEta, m_jetComponentIPhi;
+  std::vector<float> m_jetComponentEnergy;
 };
 
 #endif  // JETCHARGETREEMAKER_H
