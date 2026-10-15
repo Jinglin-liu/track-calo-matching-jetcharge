@@ -68,5 +68,5 @@ fi
 #printenv
 
 echo running: runTrackCaloMatch.sh $*
-root.exe -q -b Fun4All_TrackCaloMatch.C\(${nEvents},\"${inDst}\",\"${outDir}\",${nSkip}\)
+root.exe -q -b Fun4All_TrackCaloMatch.C\\(${nEvents},\\\"${inDst}\\\",\\\"${outDir}\\\",${nSkip},false,${writeJetChargeTree}\\)
 echo Script done
