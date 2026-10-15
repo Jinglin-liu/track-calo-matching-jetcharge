@@ -245,7 +245,6 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
   }
 
   m_jetComponentOffset.push_back(0);
-  m_jetTrackOffset.push_back(0);
   for (auto* jet : *jets)
   {
     if (!jet || !std::isfinite(jet->get_pt()) ||
@@ -264,43 +263,6 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
     m_jetEmcalFrac.push_back(jet->get_emcal_frac());
     m_jetIhcalFrac.push_back(jet->get_ihcal_frac());
     m_jetOhcalFrac.push_back(jet->get_ohcal_frac());
-
-    // Track direction at the vertex (not projected calorimeter position).
-    // Overlapping jet cones may share a track.
-    double numerator = 0.;
-    double matchedPtSum = 0.;
-    int nMatched = 0;
-    const double jetEta = jet->get_eta();
-    const double jetPhi = jet->get_phi();
-    if (std::isfinite(jetEta) && std::isfinite(jetPhi))
-    {
-      for (std::size_t i = 0; i < m_trackPt.size(); ++i)
-      {
-        const double trackPt = m_trackPt[i];
-        const double trackEta = m_trackEta[i];
-        const double trackPhi = m_trackPhi[i];
-        if (!std::isfinite(trackPt) || trackPt <= 0. ||
-            !std::isfinite(trackEta) || !std::isfinite(trackPhi)) continue;
-        const double dEta = trackEta - jetEta;
-        const double dPhi = std::remainder(trackPhi - jetPhi, 2. * std::acos(-1.));
-        const double dR = std::hypot(dEta, dPhi);
-        if (dR >= m_trackJetMatchR) continue;
-        m_jetTrackIndex.push_back(static_cast<unsigned int>(i));
-        m_jetTrackDeltaR.push_back(static_cast<float>(dR));
-        numerator += m_trackCharge[i] * std::pow(trackPt, m_jetChargeKappa);
-        matchedPtSum += trackPt;
-        ++nMatched;
-      }
-    }
-    m_jetTrackOffset.push_back(static_cast<unsigned int>(m_jetTrackIndex.size()));
-    m_jetNMatchedTracks.push_back(nMatched);
-    m_jetMatchedTrackPtSum.push_back(static_cast<float>(matchedPtSum));
-    m_jetChargeNumerator.push_back(static_cast<float>(numerator));
-    const double jetPt = jet->get_pt();
-    const double charge = jetPt > 0.
-        ? numerator / std::pow(jetPt, m_jetChargeKappa)
-        : std::numeric_limits<double>::quiet_NaN();
-    m_jetCharge.push_back(static_cast<float>(charge));
 
     for (const auto& component : jet->get_comp_vec())
     {
@@ -335,6 +297,64 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
     }
     m_jetComponentOffset.push_back(
         static_cast<unsigned int>(m_jetComponentId.size()));
+  }
+
+  // Exclusive nearest-axis assignment. Consider only jets retained above.
+  // Every track can be assigned to at most one jet, within matching R.
+  // Exact DeltaR ties resolve to the earlier jet in the stored jet arrays.
+  const std::size_t nJets = m_jetId.size();
+  std::vector<std::vector<unsigned int>> matchedIndices(nJets);
+  std::vector<std::vector<float>> matchedDeltaR(nJets);
+  const double twoPi = 2. * std::acos(-1.);
+  for (std::size_t i = 0; i < m_trackPt.size(); ++i)
+  {
+    if (!std::isfinite(m_trackPt[i]) || m_trackPt[i] <= 0. ||
+        !std::isfinite(m_trackEta[i]) || !std::isfinite(m_trackPhi[i]))
+      continue;
+
+    std::size_t bestJet = nJets;  // sentinel: no jet within R
+    double bestDeltaR = m_trackJetMatchR;
+    for (std::size_t j = 0; j < nJets; ++j)
+    {
+      if (!std::isfinite(m_jetEta[j]) || !std::isfinite(m_jetPhi[j]))
+        continue;
+      const double dEta = m_trackEta[i] - m_jetEta[j];
+      const double dPhi = std::remainder(m_trackPhi[i] - m_jetPhi[j], twoPi);
+      const double deltaR = std::hypot(dEta, dPhi);
+      if (deltaR < bestDeltaR)
+      {
+        bestDeltaR = deltaR;
+        bestJet = j;
+      }
+    }
+    if (bestJet == nJets) continue;
+    matchedIndices[bestJet].push_back(static_cast<unsigned int>(i));
+    matchedDeltaR[bestJet].push_back(static_cast<float>(bestDeltaR));
+  }
+
+  // Flatten jet-to-track associations and calculate jet charge after all
+  // assignments are finalized. jet_track_offset has n_jets+1 entries.
+  m_jetTrackOffset.push_back(0);
+  for (std::size_t j = 0; j < nJets; ++j)
+  {
+    double numerator = 0.;
+    double ptSum = 0.;
+    for (std::size_t k = 0; k < matchedIndices[j].size(); ++k)
+    {
+      const unsigned int i = matchedIndices[j][k];
+      m_jetTrackIndex.push_back(i);
+      m_jetTrackDeltaR.push_back(matchedDeltaR[j][k]);
+      numerator += m_trackCharge[i] * std::pow(m_trackPt[i], m_jetChargeKappa);
+      ptSum += m_trackPt[i];
+    }
+    m_jetTrackOffset.push_back(static_cast<unsigned int>(m_jetTrackIndex.size()));
+    m_jetNMatchedTracks.push_back(static_cast<int>(matchedIndices[j].size()));
+    m_jetMatchedTrackPtSum.push_back(static_cast<float>(ptSum));
+    m_jetChargeNumerator.push_back(static_cast<float>(numerator));
+    const double jetPt = m_jetPt[j];
+    m_jetCharge.push_back(jetPt > 0.
+        ? static_cast<float>(numerator / std::pow(jetPt, m_jetChargeKappa))
+        : std::numeric_limits<float>::quiet_NaN());
   }
 
   m_nTracks = static_cast<int>(m_trackId.size());
