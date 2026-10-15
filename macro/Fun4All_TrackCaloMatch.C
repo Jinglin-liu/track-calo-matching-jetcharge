@@ -503,7 +503,7 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
         jetTree->setTrackQualityMax(300.);
         jetTree->setMinTpcClusters(22);
         jetTree->requireCrossingZero(true);
-        jetTree->setJetPtMin(0.);
+        jetTree->setJetPtMin(20.0);
         se->registerSubsystem(jetTree);
     }
 
