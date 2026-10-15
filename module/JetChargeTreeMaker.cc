@@ -220,7 +220,7 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
       topNode, "TOWERINFO_CALIB_HCALOUT");
   if (!cemc || !ihcal || !ohcal)
   {
-    std::cerr << Name() << ": missing calibrated/retowered tower collections" << '\\n';
+    std::cerr << Name() << ": missing calibrated/retowered tower collections" << '\n';
     return Fun4AllReturnCodes::ABORTRUN;
   }
 
