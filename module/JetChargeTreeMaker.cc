@@ -72,6 +72,8 @@ int JetChargeTreeMaker::Init(PHCompositeNode*)
   BRANCH("event", m_event);
   BRANCH("event_index", m_entryIndex);
   BRANCH("vertex_z", m_vertexZ);
+  BRANCH("jet_charge_kappa", m_treeJetChargeKappa);
+  BRANCH("track_jet_match_r", m_treeTrackJetMatchR);
   BRANCH("n_tracks", m_nTracks);
   BRANCH("n_jets", m_nJets);
   BRANCH("track_id", m_trackId);
@@ -111,6 +113,13 @@ int JetChargeTreeMaker::Init(PHCompositeNode*)
   BRANCH("jet_emcal_frac", m_jetEmcalFrac);
   BRANCH("jet_ihcal_frac", m_jetIhcalFrac);
   BRANCH("jet_ohcal_frac", m_jetOhcalFrac);
+  BRANCH("jet_charge", m_jetCharge);
+  BRANCH("jet_charge_numerator", m_jetChargeNumerator);
+  BRANCH("jet_n_matched_tracks", m_jetNMatchedTracks);
+  BRANCH("jet_matched_track_pt_sum", m_jetMatchedTrackPtSum);
+  BRANCH("jet_track_offset", m_jetTrackOffset);
+  BRANCH("jet_track_index", m_jetTrackIndex);
+  BRANCH("jet_track_delta_r", m_jetTrackDeltaR);
   BRANCH("jet_component_offset", m_jetComponentOffset);
   BRANCH("jet_component_source", m_jetComponentSource);
   BRANCH("jet_component_id", m_jetComponentId);
@@ -142,6 +151,9 @@ void JetChargeTreeMaker::resetBranches()
   CLEAR(m_jetE); CLEAR(m_jetPt); CLEAR(m_jetEt);
   CLEAR(m_jetEta); CLEAR(m_jetPhi); CLEAR(m_jetMass);
   CLEAR(m_jetEmcalFrac); CLEAR(m_jetIhcalFrac); CLEAR(m_jetOhcalFrac);
+  CLEAR(m_jetCharge); CLEAR(m_jetChargeNumerator);
+  CLEAR(m_jetNMatchedTracks); CLEAR(m_jetMatchedTrackPtSum);
+  CLEAR(m_jetTrackOffset); CLEAR(m_jetTrackIndex); CLEAR(m_jetTrackDeltaR);
   CLEAR(m_jetComponentOffset); CLEAR(m_jetComponentSource); CLEAR(m_jetComponentId);
   CLEAR(m_jetComponentEnergy); CLEAR(m_jetComponentIEta); CLEAR(m_jetComponentIPhi);
 #undef CLEAR
@@ -151,6 +163,14 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
 {
   resetBranches();
   m_entryIndex = m_eventIndex++;
+  m_treeJetChargeKappa = m_jetChargeKappa;
+  m_treeTrackJetMatchR = m_trackJetMatchR;
+  if (!std::isfinite(m_jetChargeKappa) || m_jetChargeKappa < 0.f ||
+      !std::isfinite(m_trackJetMatchR) || m_trackJetMatchR <= 0.f)
+  {
+    std::cerr << Name() << ": invalid kappa or matching radius" << '\n';
+    return Fun4AllReturnCodes::ABORTRUN;
+  }
 
   const auto* tracks = findNode::getClass<SvtxTrackMap>(topNode, m_trackNode);
   auto* jets = findNode::getClass<JetContainer>(topNode, m_jetNode);
@@ -225,6 +245,7 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
   }
 
   m_jetComponentOffset.push_back(0);
+  m_jetTrackOffset.push_back(0);
   for (auto* jet : *jets)
   {
     if (!jet || !std::isfinite(jet->get_pt()) ||
@@ -243,6 +264,43 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
     m_jetEmcalFrac.push_back(jet->get_emcal_frac());
     m_jetIhcalFrac.push_back(jet->get_ihcal_frac());
     m_jetOhcalFrac.push_back(jet->get_ohcal_frac());
+
+    // Track direction at the vertex (not projected calorimeter position).
+    // Overlapping jet cones may share a track.
+    double numerator = 0.;
+    double matchedPtSum = 0.;
+    int nMatched = 0;
+    const double jetEta = jet->get_eta();
+    const double jetPhi = jet->get_phi();
+    if (std::isfinite(jetEta) && std::isfinite(jetPhi))
+    {
+      for (std::size_t i = 0; i < m_trackPt.size(); ++i)
+      {
+        const double trackPt = m_trackPt[i];
+        const double trackEta = m_trackEta[i];
+        const double trackPhi = m_trackPhi[i];
+        if (!std::isfinite(trackPt) || trackPt <= 0. ||
+            !std::isfinite(trackEta) || !std::isfinite(trackPhi)) continue;
+        const double dEta = trackEta - jetEta;
+        const double dPhi = std::remainder(trackPhi - jetPhi, 2. * std::acos(-1.));
+        const double dR = std::hypot(dEta, dPhi);
+        if (dR >= m_trackJetMatchR) continue;
+        m_jetTrackIndex.push_back(static_cast<unsigned int>(i));
+        m_jetTrackDeltaR.push_back(static_cast<float>(dR));
+        numerator += m_trackCharge[i] * std::pow(trackPt, m_jetChargeKappa);
+        matchedPtSum += trackPt;
+        ++nMatched;
+      }
+    }
+    m_jetTrackOffset.push_back(static_cast<unsigned int>(m_jetTrackIndex.size()));
+    m_jetNMatchedTracks.push_back(nMatched);
+    m_jetMatchedTrackPtSum.push_back(static_cast<float>(matchedPtSum));
+    m_jetChargeNumerator.push_back(static_cast<float>(numerator));
+    const double jetPt = jet->get_pt();
+    const double charge = jetPt > 0.
+        ? numerator / std::pow(jetPt, m_jetChargeKappa)
+        : std::numeric_limits<double>::quiet_NaN();
+    m_jetCharge.push_back(static_cast<float>(charge));
 
     for (const auto& component : jet->get_comp_vec())
     {
