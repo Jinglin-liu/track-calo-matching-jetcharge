@@ -19,6 +19,8 @@ libtrack_to_calo_la_LIBADD = \
   -ltrackbase_historic_io \
   -ltrack_io \
   -lcalo_io \
+  -ljetbase \
+  -lglobalvertex_io \
   -lffaobjects \
   -lphool \
   -lPhysics \
