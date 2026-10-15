@@ -14,8 +14,8 @@ class TTree;
 
 /**
  * One TTree entry per Fun4All event, with full selected-track and
- * anti-kT calorimeter-jet arrays. Track-to-jet matching is deliberately
- * deferred to offline analysis: no EMCal match is required for a track.
+ * anti-kT calorimeter-jet arrays. Axis-based DeltaR track matching and jet charge are calculated;
+ * no EMCal cluster match is required for a track.
  *
  * Track and jet vectors in an entry originate from the same Fun4All topNode.
  * This does NOT independently establish synchronization of different input
@@ -39,6 +39,8 @@ class JetChargeTreeMaker : public SubsysReco
   void setMinTpcClusters(int value) { m_minTpcClusters = value; }
   void requireCrossingZero(bool value) { m_requireCrossingZero = value; }
   void setJetPtMin(float value) { m_jetPtMin = value; }
+  void setJetChargeKappa(float value) { m_jetChargeKappa = value; }
+  void setTrackJetMatchR(float value) { m_trackJetMatchR = value; }
 
  private:
   void resetBranches();
@@ -51,6 +53,8 @@ class JetChargeTreeMaker : public SubsysReco
   int m_minTpcClusters = 22;
   bool m_requireCrossingZero = true;
   float m_jetPtMin = 0.f;
+  float m_jetChargeKappa = 1.f;
+  float m_trackJetMatchR = 0.4f;
   TFile* m_output = nullptr;
   TTree* m_tree = nullptr;
   std::uint64_t m_eventIndex = 0; // starts at zero; job-local
@@ -58,6 +62,7 @@ class JetChargeTreeMaker : public SubsysReco
   int m_run = -1, m_event = -1;
   std::uint64_t m_entryIndex = 0;
   float m_vertexZ = std::numeric_limits<float>::quiet_NaN();
+  float m_treeJetChargeKappa = 1.f, m_treeTrackJetMatchR = 0.4f;
   int m_nTracks = 0, m_nJets = 0;
 
   std::vector<unsigned int> m_trackId;
@@ -75,6 +80,11 @@ class JetChargeTreeMaker : public SubsysReco
   std::vector<float> m_jetPx, m_jetPy, m_jetPz, m_jetE;
   std::vector<float> m_jetPt, m_jetEt, m_jetEta, m_jetPhi, m_jetMass;
   std::vector<float> m_jetEmcalFrac, m_jetIhcalFrac, m_jetOhcalFrac;
+  std::vector<float> m_jetCharge, m_jetChargeNumerator, m_jetMatchedTrackPtSum;
+  std::vector<int> m_jetNMatchedTracks;
+  // Matched track indices point into track_* arrays in this same event.
+  std::vector<unsigned int> m_jetTrackOffset, m_jetTrackIndex;
+  std::vector<float> m_jetTrackDeltaR;
   // Flattened constituent array: jet j owns [offset[j], offset[j+1]).
   std::vector<unsigned int> m_jetComponentOffset, m_jetComponentId;
   std::vector<int> m_jetComponentSource, m_jetComponentIEta, m_jetComponentIPhi;
