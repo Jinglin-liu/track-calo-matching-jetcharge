@@ -1,18 +1,20 @@
 #!/bin/bash
 
-source /opt/sphenix/core/bin/sphenix_setup.sh -n new
-
 export USER="$(id -u -n)"
-export LOGNAME=${USER}
-export HOME=/sphenix/u/${LOGNAME}
+export LOGNAME="$USER"
+export HOME="/sphenix/u/$USER"
 
-# uncomment for local development
-export MYINSTALL=${HOME}/install
-export LD_LIBRARY_PATH=$MYINSTALL/lib:$LD_LIBRARY_PATH
-export ROOT_INCLUDE_PATH=$MYINSTALL/include:$ROOT_INCLUDE_PATH
+# Initialize the sPHENIX environment and local installation in one place.
+source "$HOME/setup.sh" || exit 1
+
 export PATH="$HOME/.local/bin:$PATH"
-#
-source /opt/sphenix/core/bin/setup_local.sh $MYINSTALL
+
+# Record the environment for cross-node debugging.
+echo "HOSTNAME: $(hostname)"
+echo "OFFLINE_MAIN: $OFFLINE_MAIN"
+echo "MYINSTALL: $MYINSTALL"
+echo "TrackToCalo library:"
+readlink -f "$MYINSTALL/lib/libtrack_to_calo.so"
 
 this_script=$BASH_SOURCE
 this_script=`readlink -f $this_script`
