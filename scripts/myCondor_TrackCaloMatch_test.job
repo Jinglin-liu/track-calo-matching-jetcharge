@@ -6,6 +6,7 @@
 universe              = vanilla
 notification          = Never
 getenv                = False
+should_transfer_files = NO
 
 # Resolve all paths relative to the submit directory (repository root).
 RepoDir               = $ENV(PWD)
