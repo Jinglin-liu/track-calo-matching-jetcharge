@@ -57,9 +57,11 @@ To test only one job first, make a one-row list and use a temporary copy of
 the submit file:
 
 ```bash
-head -n 1 fileLists/file_run79516_00_test.list > fileLists/file_run79516_00_smoke.list
-sed 's/file_run79516_00_test.list/file_run79516_00_smoke.list/' \
+awk 'NR==1 {$1=10; print}' fileLists/file_run79516_00_test.list > fileLists/file_run79516_00_smoke.list
+sed -e 's/file_run79516_00_test.list/file_run79516_00_smoke.list/' \
+    -e 's@root/trackcalomatch_test@root/trackcalomatch_smoke@' \
   scripts/myCondor_TrackCaloMatch_test.job > scripts/myCondor_TrackCaloMatch_smoke.job
+mkdir -p root/trackcalomatch_smoke
 condor_submit scripts/myCondor_TrackCaloMatch_smoke.job
 ```
 
