@@ -136,7 +136,7 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
                 const std::string outDir = "./",
                 const int nSkip = 0,
                 const bool convertSeeds = false,
-                const bool writeJetChargeTree = false)
+                const bool writeJetChargeTree = true)
 {
     auto se = Fun4AllServer::instance();
     se->Verbosity(1);
@@ -503,7 +503,7 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
         jetTree->setTrackQualityMax(300.);
         jetTree->setMinTpcClusters(22);
         jetTree->requireCrossingZero(true);
-        jetTree->setJetPtMin(20.0);
+        jetTree->setJetPtMin(5.0);
         se->registerSubsystem(jetTree);
     }
 
