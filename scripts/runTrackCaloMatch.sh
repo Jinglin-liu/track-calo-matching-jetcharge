@@ -31,8 +31,13 @@ inDst=${2:?Missing input ROOT file or list}
 outDir=${3:?Missing output directory}
 nSkip=${4:-0}
 writeJetChargeTree=${5:-false}
+jetMode=${6:-unsubtracted}
 if [[ "$writeJetChargeTree" != true && "$writeJetChargeTree" != false ]]; then
   echo 'ERROR: fifth argument must be true or false' >&2
+  exit 1
+fi
+if [[ "$jetMode" != unsubtracted && "$jetMode" != sub1 ]]; then
+  echo "ERROR: sixth argument jetMode must be unsubtracted or sub1" >&2
   exit 1
 fi
 
