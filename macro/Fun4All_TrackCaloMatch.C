@@ -140,6 +140,13 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
                 const bool writeJetChargeTree = true,
                 const std::string jetMode = "unsubtracted")
 {
+    if (writeJetChargeTree && jetMode != "unsubtracted" && jetMode != "sub1")
+    {
+        std::cerr << "Invalid jetMode: " << jetMode << std::endl;
+        gSystem->Exit(1);
+        return;
+    }
+
     auto se = Fun4AllServer::instance();
     se->Verbosity(1);
     // se->VerbosityDownscale(500);
