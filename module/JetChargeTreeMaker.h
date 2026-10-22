@@ -34,6 +34,7 @@ class JetChargeTreeMaker : public SubsysReco
   void setOutputFile(const std::string& name) { m_outputName = name; }
   void setTrackNode(const std::string& name) { m_trackNode = name; }
   void setJetNode(const std::string& name) { m_jetNode = name; }
+  void setUseSubtractedTowers(bool value) { m_useSubtractedTowers = value; }
   void setTrackPtMin(float value) { m_trackPtMin = value; }
   void setTrackQualityMax(float value) { m_trackQualityMax = value; }
   void setMinTpcClusters(int value) { m_minTpcClusters = value; }
@@ -48,6 +49,7 @@ class JetChargeTreeMaker : public SubsysReco
   std::string m_outputName = "jet_charge_inputs.root";
   std::string m_trackNode = "SvtxTrackMap";
   std::string m_jetNode = "AntiKt_unsubtracted_r04";
+  bool m_useSubtractedTowers = false;
   float m_trackPtMin = 0.2f;
   float m_trackQualityMax = 300.f;
   int m_minTpcClusters = 22;
