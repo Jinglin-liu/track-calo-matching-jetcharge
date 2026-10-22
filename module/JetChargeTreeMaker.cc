@@ -232,12 +232,13 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
 
   // The same tower collections that were used to construct the calorimeter
   // jets provide constituent energies and detector indices.
+  const std::string suffix = m_useSubtractedTowers ? "_SUB1" : "";
   auto* cemc = findNode::getClass<TowerInfoContainer>(
-      topNode, "TOWERINFO_CALIB_CEMC_RETOWER");
+      topNode, "TOWERINFO_CALIB_CEMC_RETOWER" + suffix);
   auto* ihcal = findNode::getClass<TowerInfoContainer>(
-      topNode, "TOWERINFO_CALIB_HCALIN");
+      topNode, "TOWERINFO_CALIB_HCALIN" + suffix);
   auto* ohcal = findNode::getClass<TowerInfoContainer>(
-      topNode, "TOWERINFO_CALIB_HCALOUT");
+      topNode, "TOWERINFO_CALIB_HCALOUT" + suffix);
   if (!cemc || !ihcal || !ohcal)
   {
     std::cerr << Name() << ": missing calibrated/retowered tower collections" << '\n';
@@ -271,9 +272,24 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
       TowerInfoContainer* towers = nullptr;
       switch (component.first)
       {
-        case Jet::CEMC_TOWERINFO_RETOWER: towers = cemc; break;
-        case Jet::HCALIN_TOWERINFO: towers = ihcal; break;
-        case Jet::HCALOUT_TOWERINFO: towers = ohcal; break;
+        case Jet::CEMC_TOWERINFO_RETOWER:
+          if (!m_useSubtractedTowers) towers = cemc;
+          break;
+        case Jet::HCALIN_TOWERINFO:
+          if (!m_useSubtractedTowers) towers = ihcal;
+          break;
+        case Jet::HCALOUT_TOWERINFO:
+          if (!m_useSubtractedTowers) towers = ohcal;
+          break;
+        case Jet::CEMC_TOWERINFO_SUB1:
+          if (m_useSubtractedTowers) towers = cemc;
+          break;
+        case Jet::HCALIN_TOWERINFO_SUB1:
+          if (m_useSubtractedTowers) towers = ihcal;
+          break;
+        case Jet::HCALOUT_TOWERINFO_SUB1:
+          if (m_useSubtractedTowers) towers = ohcal;
+          break;
         default: break;
       }
       float energy = std::numeric_limits<float>::quiet_NaN();
