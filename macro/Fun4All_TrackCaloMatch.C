@@ -473,7 +473,8 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
 
         auto *retower = new RetowerCEMC("RetowerCEMC_JetCharge");
         retower->set_towerinfo(true);
-        retower->set_frac_cut(0.5);
+        retower->set_frac_cut(1); // fraction of retower that must be masked to mask the full retower. 1=do not apply extra masking
+        retower->set_do_rescale(false); // scale the retowered towers up to account for dead area?
         se->registerSubsystem(retower);
 
         auto *jetReco = new JetReco("JetReco_JetCharge");
@@ -503,7 +504,7 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
         jetTree->setTrackQualityMax(300.);
         jetTree->setMinTpcClusters(22);
         jetTree->requireCrossingZero(true);
-        jetTree->setJetPtMin(5.0);
+        jetTree->setJetPtMin(0.0);
         se->registerSubsystem(jetTree);
     }
 
