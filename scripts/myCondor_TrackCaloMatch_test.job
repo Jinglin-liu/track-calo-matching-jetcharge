@@ -21,8 +21,10 @@ output                = $(RepoDir)/log/trackcalomatch_test-$(Cluster)-$(Process)
 error                 = $(RepoDir)/log/trackcalomatch_test-$(Cluster)-$(Process).err
 log                   = /tmp/jlnliu/trackcalomatch_test-$(Cluster)-$(Process).log
 
-# 5th argument enables jet reconstruction and JetChargeTreeMaker.
-arguments             = $(events) $(file) $(OutDir) $(skip) true
+# Set to "unsubtracted" (default reconstruction) or "sub1" (sPHENIX Sub1 towers).
+# This is the 6th argument to runTrackCaloMatch.sh; 5th enables jet-charge output.
+JetMode               = unsubtracted
+arguments             = $(events) $(file) $(OutDir) $(skip) true $(JetMode)
 
 # The input is a DST basename; the wrapper uses getinputfiles.pl to resolve it.
 queue events,file,skip from $(RepoDir)/fileLists/file_run79516_00_100Test.list
