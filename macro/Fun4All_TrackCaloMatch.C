@@ -6,6 +6,7 @@
 
 #include <fun4all/Fun4AllUtils.h>
 #include <G4_ActsGeom.C>
+#include <HIJetReco.C>
 #include <G4_Global.C>
 #include <G4_Magnet.C>
 #include <G4_Mbd.C>
@@ -136,7 +137,8 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
                 const std::string outDir = "./",
                 const int nSkip = 0,
                 const bool convertSeeds = false,
-                const bool writeJetChargeTree = true)
+                const bool writeJetChargeTree = true,
+                const std::string jetMode = "unsubtracted")
 {
     auto se = Fun4AllServer::instance();
     se->Verbosity(1);
@@ -471,21 +473,46 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
             return;
         }
 
-        auto *retower = new RetowerCEMC("RetowerCEMC_JetCharge");
-        retower->set_towerinfo(true);
-        retower->set_frac_cut(1); // fraction of retower that must be masked to mask the full retower. 1=do not apply extra masking
-        retower->set_do_rescale(false); // scale the retowered towers up to account for dead area?
-        se->registerSubsystem(retower);
+        if (jetMode == "unsubtracted")
+        {
+            auto *retower = new RetowerCEMC("RetowerCEMC_JetCharge");
+            retower->set_towerinfo(true);
+            retower->set_frac_cut(0.5);
+            se->registerSubsystem(retower);
 
-        auto *jetReco = new JetReco("JetReco_JetCharge");
-        jetReco->add_input(new TowerJetInput(Jet::CEMC_TOWERINFO_RETOWER));
-        jetReco->add_input(new TowerJetInput(Jet::HCALIN_TOWERINFO));
-        jetReco->add_input(new TowerJetInput(Jet::HCALOUT_TOWERINFO));
-        jetReco->add_algo(new FastJetAlgo(Jet::ANTIKT, 0.4),
-                          "AntiKt_unsubtracted_r04");
-        jetReco->set_algo_node("ANTIKT");
-        jetReco->set_input_node("TOWER");
-        se->registerSubsystem(jetReco);
+            auto *jetReco = new JetReco("JetReco_JetCharge");
+            jetReco->add_input(new TowerJetInput(Jet::CEMC_TOWERINFO_RETOWER));
+            jetReco->add_input(new TowerJetInput(Jet::HCALIN_TOWERINFO));
+            jetReco->add_input(new TowerJetInput(Jet::HCALOUT_TOWERINFO));
+            jetReco->add_algo(new FastJetAlgo(Jet::ANTIKT, 0.4),
+                              "AntiKt_unsubtracted_r04");
+            jetReco->set_algo_node("ANTIKT");
+            jetReco->set_input_node("TOWER");
+            se->registerSubsystem(jetReco);
+        }
+        else if (jetMode == "sub1")
+        {
+            // Official sPHENIX HIJetReco.C tower subtraction sequence:
+            // retower -> raw R=0.2 seeds -> background -> subtracted seeds
+            // -> refined background -> subtracted towers -> anti-kT jets.
+            HIJETS::tower_prefix = "TOWERINFO_CALIB";
+            HIJETS::do_flow = 0;
+            HIJETS::do_CS = false;
+            HIJETS::is_pp = true;
+            Enable::HIJETS_MC = false;
+            Enable::HIJETS_TRUTH = false;
+            Enable::HIJETS_TOWER = true;
+            Enable::HIJETS_TRACK = false;
+            Enable::HIJETS_PFLOW = false;
+            HIJetReco();
+        }
+        else
+        {
+            std::cerr << "Unknown jetMode '" << jetMode
+                      << "'; expected 'unsubtracted' or 'sub1'" << std::endl;
+            gSystem->Exit(1);
+            return;
+        }
 
         std::string jetTreePath = outDir;
         if (!jetTreePath.empty() && jetTreePath.back() != '/')
@@ -493,13 +520,15 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
             jetTreePath += "/";
         }
         gSystem->mkdir(jetTreePath.c_str(), true);
-        jetTreePath += "jet_charge_inputs_" + nice_runnumber.str()
+        jetTreePath += "jet_charge_inputs_" + jetMode + "_" + nice_runnumber.str()
                     + "_" + nice_segment.str()
                     + "_" + nice_skip.str() + ".root";
 
         auto *jetTree = new JetChargeTreeMaker("JetChargeTreeMaker");
         jetTree->setOutputFile(jetTreePath);
-        jetTree->setJetNode("AntiKt_unsubtracted_r04");
+        jetTree->setJetNode(jetMode == "sub1" ? "AntiKt_Tower_r04_Sub1"
+                                                : "AntiKt_unsubtracted_r04");
+        jetTree->setUseSubtractedTowers(jetMode == "sub1");
         jetTree->setTrackPtMin(0.2);
         jetTree->setTrackQualityMax(300.);
         jetTree->setMinTpcClusters(22);
