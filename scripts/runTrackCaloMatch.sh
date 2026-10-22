@@ -75,7 +75,7 @@ fi
 #printenv
 
 echo running: runTrackCaloMatch.sh $*
-root.exe -q -b Fun4All_TrackCaloMatch.C\(${nEvents},\"${inDst}\",\"${outDir}\",${nSkip},false,${writeJetChargeTree}\)
+root.exe -q -b Fun4All_TrackCaloMatch.C\(${nEvents},\"${inDst}\",\"${outDir}\",${nSkip},false,${writeJetChargeTree},\"${jetMode}\"\)
 status=$?
 
 echo "ROOT exit status: $status"
