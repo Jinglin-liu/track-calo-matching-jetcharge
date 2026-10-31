@@ -138,7 +138,8 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
                 const int nSkip = 0,
                 const bool convertSeeds = false,
                 const bool writeJetChargeTree = true,
-                const std::string jetMode = "unsubtracted")
+                const std::string jetMode = "unsubtracted",
+                const bool enableTrackToCalo = true)
 {
     if (writeJetChargeTree && jetMode != "unsubtracted" && jetMode != "sub1")
     {
@@ -541,6 +542,8 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
         jetTree->setMinTpcClusters(22);
         jetTree->requireCrossingZero(true);
         jetTree->setJetPtMin(0.0);
+        // JetChargeTreeMaker logs an event summary every 100 entries when Verbosity > 0.
+        jetTree->Verbosity(1);
         se->registerSubsystem(jetTree);
     }
 
@@ -549,27 +552,35 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
     // Fun4All_KFP_Conv.C.  This final registration block is the direct
     // TrackToCalo-specific part of the tutorial.
     // ---------------------------------------------------------------------
-    std::string output_path = outDir;
-    if (!output_path.empty() && output_path.back() != '/')
+    std::string output_path;
+    if (enableTrackToCalo)
     {
-        output_path += "/";
+        std::string output_path = outDir;
+        if (!output_path.empty() && output_path.back() != '/')
+        {
+            output_path += "/";
+        }
+        gSystem->mkdir(output_path.c_str(), true);
+        output_path += "track_calo_pairs_" + nice_runnumber.str() + "_" + nice_segment.str() + "_" + nice_skip.str() + ".root";
+    
+        auto *matcher = new TrackToCalo("TrackToCalo");
+        matcher->SetOutputFileName(output_path);
+        matcher->EMcalRadiusUser(true);
+        matcher->setEMcalRadius(cemc_proj_radius);
+        matcher->setTrackPtLowCut(0.2);
+        matcher->setTrackQuality(300.);
+        matcher->setnTpcClusters(22);
+        matcher->requireCrossingZero(true);
+        matcher->setEmcalELowCut(0.2);
+        matcher->setdphicut(0.10);
+        matcher->setdzcut(10.);
+        matcher->Verbosity(1);
+        se->registerSubsystem(matcher);
     }
-    gSystem->mkdir(output_path.c_str(), true);
-    output_path += "track_calo_pairs_" + nice_runnumber.str() + "_" + nice_segment.str() + "_" + nice_skip.str() + ".root";
-
-    auto *matcher = new TrackToCalo("TrackToCalo");
-    matcher->SetOutputFileName(output_path);
-    matcher->EMcalRadiusUser(true);
-    matcher->setEMcalRadius(cemc_proj_radius);
-    matcher->setTrackPtLowCut(0.2);
-    matcher->setTrackQuality(300.);
-    matcher->setnTpcClusters(22);
-    matcher->requireCrossingZero(true);
-    matcher->setEmcalELowCut(0.2);
-    matcher->setdphicut(0.10);
-    matcher->setdzcut(10.);
-    matcher->Verbosity(1);
-    se->registerSubsystem(matcher);
+    else
+    {
+        std::cout << "TrackToCalo disabled (no track_calo_pairs output)." << std::endl;
+    }
 
     se->skip(nSkip);
     se->run(nEvents);
@@ -578,7 +589,14 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
 
     delete se;
 
-    std::cout << "Finished. Track-calo pairs were written to " << output_path
-              << std::endl;
+    if (enableTrackToCalo)
+    {
+        std::cout << "Finished. Track-calo pairs were written to " << output_path
+                  << std::endl;
+    }
+    else
+    {
+        std::cout << "Finished. TrackToCalo was disabled." << std::endl;
+    }
     gSystem->Exit(0);
 }
