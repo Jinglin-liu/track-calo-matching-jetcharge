@@ -35,6 +35,9 @@
 #include <jetbase/Jet.h>
 #include <jetbase/JetReco.h>
 #include <jetbase/TowerJetInput.h>
+
+#include <cmath>
+#include <vector>
 #include <jetbackground/RetowerCEMC.h>
 
 #include <caloreco/CaloGeomMapping.h>
@@ -56,6 +59,44 @@ namespace TrackToCaloReco
     bool get_calo_info = true;
     float cemc_proj_radius = 102.9;
 }
+
+// Filter tower inputs before FastJet, without modifying central sPHENIX libraries.
+// Jet::get_pt() is a magnitude, including for negative-energy Sub1 towers.
+class PtCutTowerJetInput : public TowerJetInput
+{
+ public:
+    PtCutTowerJetInput(Jet::SRC source, double minPt,
+                       const std::string &prefix = "TOWERINFO_CALIB")
+      : TowerJetInput(source, prefix)
+      , m_minPt(minPt)
+    {
+    }
+
+    std::vector<Jet *> get_input(PHCompositeNode *topNode) override
+    {
+        auto inputs = TowerJetInput::get_input(topNode);
+        if (m_minPt <= 0.0) return inputs;
+
+        std::vector<Jet *> accepted;
+        accepted.reserve(inputs.size());
+        for (auto *tower : inputs)
+        {
+            if (tower && std::isfinite(tower->get_pt()) &&
+                tower->get_pt() >= m_minPt)
+            {
+                accepted.push_back(tower);
+            }
+            else
+            {
+                delete tower;
+            }
+        }
+        return accepted;
+    }
+
+ private:
+    double m_minPt;
+};
 
 using namespace TrackToCaloReco;
 
@@ -139,11 +180,20 @@ void Fun4All_TrackCaloMatch(const int nEvents = 100,
                 const bool convertSeeds = false,
                 const bool writeJetChargeTree = true,
                 const std::string jetMode = "unsubtracted",
-                const bool enableTrackToCalo = false)
+                const bool enableTrackToCalo = false,
+                const double minTowerPt = 0.0)
 {
     if (writeJetChargeTree && jetMode != "unsubtracted" && jetMode != "sub1")
     {
         std::cerr << "Invalid jetMode: " << jetMode << std::endl;
+        gSystem->Exit(1);
+        return;
+    }
+
+    if (!std::isfinite(minTowerPt) || minTowerPt < 0.0)
+    {
+        std::cerr << "Invalid minTowerPt: " << minTowerPt
+                  << " (must be finite and >= 0 GeV/c)" << std::endl;
         gSystem->Exit(1);
         return;
     }
@@ -474,6 +524,8 @@ void Fun4All_TrackCaloMatch(const int nEvents = 100,
     // Track-jet geometric association is intentionally deferred to analysis.
     if (writeJetChargeTree)
     {
+        std::cout << "Calo-jet constituent pT threshold: " << minTowerPt
+                  << " GeV/c (0 = original tower inputs)" << std::endl;
         if (!get_calo_info)
         {
             std::cerr << "JetChargeTreeMaker requires get_calo_info" << std::endl;
@@ -489,9 +541,9 @@ void Fun4All_TrackCaloMatch(const int nEvents = 100,
             se->registerSubsystem(retower);
 
             auto *jetReco = new JetReco("JetReco_JetCharge");
-            jetReco->add_input(new TowerJetInput(Jet::CEMC_TOWERINFO_RETOWER));
-            jetReco->add_input(new TowerJetInput(Jet::HCALIN_TOWERINFO));
-            jetReco->add_input(new TowerJetInput(Jet::HCALOUT_TOWERINFO));
+            jetReco->add_input(new PtCutTowerJetInput(Jet::CEMC_TOWERINFO_RETOWER, minTowerPt));
+            jetReco->add_input(new PtCutTowerJetInput(Jet::HCALIN_TOWERINFO, minTowerPt));
+            jetReco->add_input(new PtCutTowerJetInput(Jet::HCALOUT_TOWERINFO, minTowerPt));
             jetReco->add_algo(new FastJetAlgo(Jet::ANTIKT, 0.4),
                               "AntiKt_unsubtracted_r04");
             jetReco->set_algo_node("ANTIKT");
@@ -513,6 +565,35 @@ void Fun4All_TrackCaloMatch(const int nEvents = 100,
             Enable::HIJETS_TRACK = false;
             Enable::HIJETS_PFLOW = false;
             HIJetReco();
+
+            if (minTowerPt > 0.0)
+            {
+                // Keep official seed finding and background subtraction unchanged.
+                // Cluster an additional final R=0.4 collection using |tower pT|
+                // >= minTowerPt. Negative-energy Sub1 towers are retained by
+                // magnitude and FastJetAlgoSub handles their signed energies.
+                auto *filteredReco = new JetReco("JetReco_Sub1_TowerPtCut");
+                auto *cemcInput = new PtCutTowerJetInput(
+                    Jet::CEMC_TOWERINFO_SUB1, minTowerPt, HIJETS::tower_prefix);
+                auto *ihcalInput = new PtCutTowerJetInput(
+                    Jet::HCALIN_TOWERINFO_SUB1, minTowerPt, HIJETS::tower_prefix);
+                auto *ohcalInput = new PtCutTowerJetInput(
+                    Jet::HCALOUT_TOWERINFO_SUB1, minTowerPt, HIJETS::tower_prefix);
+                if (HIJETS::do_vertex_type)
+                {
+                    cemcInput->set_GlobalVertexType(HIJETS::vertex_type);
+                    ihcalInput->set_GlobalVertexType(HIJETS::vertex_type);
+                    ohcalInput->set_GlobalVertexType(HIJETS::vertex_type);
+                }
+                filteredReco->add_input(cemcInput);
+                filteredReco->add_input(ihcalInput);
+                filteredReco->add_input(ohcalInput);
+                filteredReco->add_algo(HIJETS::GetFJAlgo(0.4),
+                                       "AntiKt_Tower_r04_Sub1_PtCut");
+                filteredReco->set_algo_node(HIJETS::jet_node);
+                filteredReco->set_input_node("TOWER");
+                se->registerSubsystem(filteredReco);
+            }
         }
         else
         {
@@ -534,8 +615,12 @@ void Fun4All_TrackCaloMatch(const int nEvents = 100,
 
         auto *jetTree = new JetChargeTreeMaker("JetChargeTreeMaker");
         jetTree->setOutputFile(jetTreePath);
-        jetTree->setJetNode(jetMode == "sub1" ? "AntiKt_Tower_r04_Sub1"
-                                                : "AntiKt_unsubtracted_r04");
+        const std::string jetNode = (jetMode == "unsubtracted")
+            ? "AntiKt_unsubtracted_r04"
+            : (minTowerPt > 0.0 ? "AntiKt_Tower_r04_Sub1_PtCut"
+                                : "AntiKt_Tower_r04_Sub1");
+        std::cout << "JetChargeTreeMaker jet node: " << jetNode << std::endl;
+        jetTree->setJetNode(jetNode);
         jetTree->setUseSubtractedTowers(jetMode == "sub1");
         jetTree->setTrackPtMin(0.5); // 0.2 GeV/c by track calo matching
         jetTree->setTrackQualityMax(300.);
