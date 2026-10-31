@@ -132,14 +132,14 @@ std::string GetRunInfo(const std::string &filename)
     return "";
 }
 
-void Fun4All_TrackCaloMatch(const int nEvents = -1,
+void Fun4All_TrackCaloMatch(const int nEvents = 100,
                 const std::string inputDST = "DST_TRKR_SEED_run3pp_ana538_2025p011_v001-00079516-00000.root",
                 const std::string outDir = "./",
                 const int nSkip = 0,
                 const bool convertSeeds = false,
                 const bool writeJetChargeTree = true,
                 const std::string jetMode = "unsubtracted",
-                const bool enableTrackToCalo = true)
+                const bool enableTrackToCalo = false)
 {
     if (writeJetChargeTree && jetMode != "unsubtracted" && jetMode != "sub1")
     {
@@ -537,11 +537,11 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
         jetTree->setJetNode(jetMode == "sub1" ? "AntiKt_Tower_r04_Sub1"
                                                 : "AntiKt_unsubtracted_r04");
         jetTree->setUseSubtractedTowers(jetMode == "sub1");
-        jetTree->setTrackPtMin(0.2);
+        jetTree->setTrackPtMin(0.5); // 0.2 GeV/c by track calo matching
         jetTree->setTrackQualityMax(300.);
         jetTree->setMinTpcClusters(22);
         jetTree->requireCrossingZero(true);
-        jetTree->setJetPtMin(0.0);
+        jetTree->setJetPtMin(5.0);
         // JetChargeTreeMaker logs an event summary every 100 entries when Verbosity > 0.
         jetTree->Verbosity(1);
         se->registerSubsystem(jetTree);
