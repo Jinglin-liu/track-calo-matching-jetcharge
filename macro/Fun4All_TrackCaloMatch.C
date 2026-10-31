@@ -555,7 +555,7 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
     std::string output_path;
     if (enableTrackToCalo)
     {
-        std::string output_path = outDir;
+        output_path = outDir;
         if (!output_path.empty() && output_path.back() != '/')
         {
             output_path += "/";
