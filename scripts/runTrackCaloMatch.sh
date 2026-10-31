@@ -33,6 +33,7 @@ nSkip=${4:-0}
 writeJetChargeTree=${5:-true}
 jetMode=${6:-unsubtracted}
 enableTrackToCalo=${7:-true}
+minTowerPt=${8:-0.0}
 if [[ "$writeJetChargeTree" != true && "$writeJetChargeTree" != false ]]; then
   echo 'ERROR: fifth argument must be true or false' >&2
   exit 1
@@ -43,6 +44,11 @@ if [[ "$jetMode" != unsubtracted && "$jetMode" != sub1 ]]; then
 fi
 if [[ "$enableTrackToCalo" != true && "$enableTrackToCalo" != false ]]; then
   echo 'ERROR: seventh argument enableTrackToCalo must be true or false' >&2
+  exit 1
+fi
+
+if ! [[ "$minTowerPt" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+]?[0-9]+)?$ ]]; then
+  echo "ERROR: eighth argument minTowerPt must be a nonnegative finite number (GeV/c)" >&2
   exit 1
 fi
 
@@ -80,7 +86,7 @@ fi
 #printenv
 
 echo running: runTrackCaloMatch.sh $*
-root.exe -q -b Fun4All_TrackCaloMatch.C\(${nEvents},\"${inDst}\",\"${outDir}\",${nSkip},false,${writeJetChargeTree},\"${jetMode}\",${enableTrackToCalo}\)
+root.exe -q -b Fun4All_TrackCaloMatch.C\(${nEvents},\"${inDst}\",\"${outDir}\",${nSkip},false,${writeJetChargeTree},\"${jetMode}\",${enableTrackToCalo},${minTowerPt}\)
 status=$?
 
 echo "ROOT exit status: $status"
