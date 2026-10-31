@@ -495,26 +495,32 @@ void Fun4All_TrackCaloMatch(const int nEvents = 100,
         se->registerSubsystem(cgm);
 	*/
 
-        //////////////////
-        // Clusters
-        std::cout << "Building clusters" << std::endl;
-        RawClusterBuilderTemplate *ClusterBuilder = new RawClusterBuilderTemplate("EmcRawClusterBuilderTemplate");
-        ClusterBuilder->Detector("CEMC");
-        ClusterBuilder->set_UseDetailedGeometry(true);
-        ClusterBuilder->set_threshold_energy(0.070); // for when using basic calibration
-        const char *calibrationRoot = getenv("CALIBRATIONROOT");
-        if (!calibrationRoot)
+        // The standard Process_Calo_Calib() above already builds CEMC clusters.
+        // Only retain this legacy second builder for TrackToCalo-enabled runs.
+        // NOTE: when enabled, both builders still target CLUSTERINFO_CEMC.
+        if (enableTrackToCalo)
         {
-            std::cerr << "CALIBRATIONROOT is not set; did you run sphenix_setup.sh?" << std::endl;
-            gSystem->Exit(1);
-            return;
+            //////////////////
+            // Clusters
+            std::cout << "Building clusters" << std::endl;
+            RawClusterBuilderTemplate *ClusterBuilder = new RawClusterBuilderTemplate("EmcRawClusterBuilderTemplate");
+            ClusterBuilder->Detector("CEMC");
+            ClusterBuilder->set_UseDetailedGeometry(true);
+            ClusterBuilder->set_threshold_energy(0.070); // for when using basic calibration
+            const char *calibrationRoot = getenv("CALIBRATIONROOT");
+            if (!calibrationRoot)
+            {
+                std::cerr << "CALIBRATIONROOT is not set; did you run sphenix_setup.sh?" << std::endl;
+                gSystem->Exit(1);
+                return;
+            }
+            std::string emc_prof = calibrationRoot;
+            emc_prof += "/EmcProfile/CEMCprof_Thresh30MeV.root";
+            // ClusterBuilder->set_UseAltZVertex(3); //0: GlobalVertexMap, 1: MbdVertexMap, 2: Nothing, 3: G4TruthInfo
+            ClusterBuilder->LoadProfile(emc_prof);
+            ClusterBuilder->set_UseTowerInfo(1); // to use towerinfo objects rather than old RawTower
+            se->registerSubsystem(ClusterBuilder);
         }
-        std::string emc_prof = calibrationRoot;
-        emc_prof += "/EmcProfile/CEMCprof_Thresh30MeV.root";
-        // ClusterBuilder->set_UseAltZVertex(3); //0: GlobalVertexMap, 1: MbdVertexMap, 2: Nothing, 3: G4TruthInfo
-        ClusterBuilder->LoadProfile(emc_prof);
-        ClusterBuilder->set_UseTowerInfo(1); // to use towerinfo objects rather than old RawTower
-        se->registerSubsystem(ClusterBuilder);
     }
 
 
