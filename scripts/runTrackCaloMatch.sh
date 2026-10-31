@@ -32,8 +32,13 @@ outDir=${3:?Missing output directory}
 nSkip=${4:-0}
 writeJetChargeTree=${5:-false}
 jetMode=${6:-unsubtracted}
+enableTrackToCalo=${7:-true}
 if [[ "$writeJetChargeTree" != true && "$writeJetChargeTree" != false ]]; then
   echo 'ERROR: fifth argument must be true or false' >&2
+  exit 1
+fi
+if [[ "$enableTrackToCalo" != true && "$enableTrackToCalo" != false ]]; then
+  echo 'ERROR: seventh argument enableTrackToCalo must be true or false' >&2
   exit 1
 fi
 if [[ "$jetMode" != unsubtracted && "$jetMode" != sub1 ]]; then
@@ -75,7 +80,7 @@ fi
 #printenv
 
 echo running: runTrackCaloMatch.sh $*
-root.exe -q -b Fun4All_TrackCaloMatch.C\(${nEvents},\"${inDst}\",\"${outDir}\",${nSkip},false,${writeJetChargeTree},\"${jetMode}\"\)
+root.exe -q -b Fun4All_TrackCaloMatch.C\(${nEvents},\"${inDst}\",\"${outDir}\",${nSkip},false,${writeJetChargeTree},\"${jetMode}\",${enableTrackToCalo}\)
 status=$?
 
 echo "ROOT exit status: $status"
