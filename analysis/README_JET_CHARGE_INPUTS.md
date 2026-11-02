@@ -1,168 +1,190 @@
-# Event-level track and calorimeter jet tree (first jet-charge step)
+# Run25 event-level track and calorimeter jet-charge inputs
 
-This feature is experimental. Run a small test and validate DST synchronization
-before processing physics data.
+This document describes the current `main` implementation of
+`macro/Fun4All_TrackCaloMatch.C` and `module/JetChargeTreeMaker.{h,cc}`.
+It is an analysis development workflow, not a validated physics measurement.
 
-## Design
+## What gets written
 
-- `module/JetChargeTreeMaker.{h,cc}` writes `JetChargeInputTree`.
-- **One TTree entry per Fun4All event** (even if no tracks or jets pass cuts).
-- Each entry has job-local `event_index`, plus `run` and `event`
-  from the event header (or -1 when unavailable).
-- All track and jet vector elements within an entry refer to the same
-  Fun4All processing iteration and are therefore geometrically comparable
-  *only after the input streams have been verified synchronized*.
-- The module **does not** use EMCal matching to select charged tracks.
-- Axis-based geometric track/jet matching and pT-weighted jet charge are calculated per jet.
-- The existing TrackToCaloTree remains unchanged.
+When `writeJetChargeTree=true`, `JetChargeTreeMaker` writes a ROOT TTree
+named **`JetChargeInputTree`**, with **one entry per processed Fun4All event**
+including events that contain zero accepted tracks or jets.
 
-### Inputs
+- `run`, `event`: EventHeader identifiers (or -1 when absent).
+- `event_index`: entry index within this job, starting at zero.
+- `vertex_z`, `jet_charge_kappa`, `track_jet_match_r`.
+- `n_tracks` and `track_*` vectors: selected reconstructed tracks.
+- `n_jets` and `jet_*` vectors: selected calorimeter jets and derived jet charge.
+- `jet_component_offset` and `jet_component_{source,id,energy,ieta,iphi}`:
+  flattened tower constituents; jet `j` owns entries
+  `[jet_component_offset[j], jet_component_offset[j+1])`.
+- `jet_track_offset`, `jet_track_index`, `jet_track_delta_r`: flattened
+  matched-track indices and distances; indices refer to `track_*` vectors
+  in the **same event**.
 
-The existing macro processes tracking seeds or fitted tracks from tracking DST,
-and additionally loads a tracking-cluster DST and a `DST_CALOFITTING` DST.
-With the optional jet-charge mode enabled, calibrated towers are obtained from
-`Process_Calo_Calib()`, CEMC is retowered with `RetowerCEMC`, then
-`JetReco` clusters `Jet::CEMC_TOWERINFO_RETOWER`,
-`Jet::HCALIN_TOWERINFO` and `Jet::HCALOUT_TOWERINFO` using anti-kT R=0.4
-without background subtraction.
+The optional `TrackToCalo` module writes a **separate** `TrackCaloTree`
+containing track–EMCal-cluster matched pairs. It does **not** determine
+which tracks enter jet charge, and is currently disabled in jet-charge
+Condor examples.
 
-Jet node: `AntiKt_unsubtracted_r04`.
-Track node: `SvtxTrackMap`.
+### Current selections in Fun4All_TrackCaloMatch.C
 
-The output stores a jet-level kinematic vector per variable and flattened
-calorimeter tower-constituent vectors with `jet_component_offset`: for jet j
-the constituent indices run from `offset[j]` (inclusive) to
-`offset[j+1]` (exclusive). The component `source`, `id` (channel),
-`energy`, `ieta` and `iphi` are saved.
+| Quantity | Macro configuration |
+| --- | --- |
+| Calorimeter jet algorithm | anti-kT, R = 0.4 |
+| Minimum saved jet pT | 5.0 GeV/c |
+| Minimum selected track pT | 0.5 GeV/c |
+| Maximum track quality | 300 |
+| Minimum TPC clusters | 22 |
+| Track crossing | 0 required |
+| Track–jet matching | closest saved jet axis, strict DeltaR < 0.4 |
+| Jet-charge kappa | 1.0 (module default) |
+| Additional tower constituent pT | configurable `minTowerPt`; **0.0 by macro default** |
 
-Track branches include ID, charge, crossing, fit/position/momentum quantities,
-DCA information, and tracking-subdetector cluster multiplicities. Default cuts
-match TrackToCalo's *track selection* (pT >= 0.2 GeV, quality <= 300,
-TPC clusters >= 22, crossing == 0). All accepted tracks are saved,
-including tracks without EMCal cluster matches. Track cuts can be adjusted
-through `JetChargeTreeMaker` setters.
+All passing tracks are saved, whether or not they match a jet or EMCal
+cluster. A track can match **at most one** saved jet; rejected jets are
+not candidates for matching. For jet `j`:
 
-## Compile in your sPHENIX setup
+`Q_kappa = [sum over matched tracks (q_track * track_pt^kappa)] / jet_pt^kappa`.
+
+For positive-pT jets without matched tracks, jet charge is zero. The
+`jet_charge_numerator`, `jet_n_matched_tracks`, and
+`jet_matched_track_pt_sum` branches provide cross-checks.
+
+## Calorimeter jet modes and tower cuts
+
+Two modes can be selected independently of the `TrackToCalo` switch:
+
+| `jetMode` | Constituent cut | Saved jet node |
+| --- | --- | --- |
+| `unsubtracted` | `minTowerPt = 0` | `AntiKt_unsubtracted_r04` |
+| `unsubtracted` | `minTowerPt > 0` | `AntiKt_unsubtracted_r04` (filtered inputs) |
+| `sub1` | `minTowerPt = 0` | `AntiKt_Tower_r04_Sub1` |
+| `sub1` | `minTowerPt > 0` | `AntiKt_Tower_r04_Sub1_PtCut` |
+
+- Unsubtracted reconstruction uses calibrated HCal towers and retowered CEMC
+  with a local `PtCutTowerJetInput` wrapper.
+- Sub1 reconstruction runs the official `HIJetReco()` background/seed/tower
+  subtraction stages unchanged. When the additional cut is positive, it
+  reconstructs a **separate final R=0.4** jet collection from filtered
+  Sub1 towers, and the TTree reads that collection.
+- The custom cut is on the **magnitude** of tower transverse momentum
+  (`Jet::get_pt()`), including for negative-energy Sub1 tower inputs;
+  this is different from a signed-energy cut.
+- Standard unfiltered Sub1 jet nodes coexist in the Fun4All node tree,
+  but the current `JetChargeTreeMaker` saves **only the selected node**,
+  with the additional saved-jet pT threshold.
+- No cluster-based jet inputs are currently used by the jet-charge module.
+
+Changing constituent cuts can change jet energy, mass, axis, track
+association, and jet charge. Compare against `minTowerPt=0` before
+interpreting differences as physics.
+
+### Input streams
+
+The macro accepts a tracking ROOT DST or a standard file list, loads
+tracking-cluster DSTs when needed, and loads `DST_CALOFITTING`. The
+present Run25 pp configuration uses tracking-cluster tag
+`ana538_2025p011_v001` and calorimeter tag `pro001_pcdb001_v001`.
+
+The mapping `calo_segment = tracking_segment / 100` is hardcoded
+for this data production. It is **not an event offset**. Verify input stream
+synchronization independently when using a different run or production.
+The TTree's `run/event` fields alone do not prove cross-stream alignment.
+
+## Build and run
+
+If `JetChargeTreeMaker.cc` or `.h` changed, rebuild the local module:
 
 ```bash
 cd module
 bash autogen.sh --prefix="$MYINSTALL"
 make -j8 install
+cd ..
 ```
 
-Follow the existing project's build instructions if your environment requires
-a different invocation of `autogen.sh`.
+For updates limited to the ROOT macro, plotting macro, submission script,
+or Markdown, rebuilding `libtrack_to_calo.so` is unnecessary as long
+as the installed library already includes the tested `JetChargeTreeMaker`.
 
-## Small test (single tracking ROOT file)
+From the repository root, the wrapper signature is:
 
-From the repository root, run:
+```text
+scripts/runTrackCaloMatch.sh NEVENTS INPUT_ROOT_OR_LIST OUTDIR NSKIP WRITE_JET_TREE JET_MODE ENABLE_TRACK_TO_CALO MIN_TOWER_PT
+```
+
+Example (10 events, unsubtracted jets, tower pT >= 0.5 GeV/c,
+TrackToCalo disabled):
 
 ```bash
 ./scripts/runTrackCaloMatch.sh 10 \
-  /path/to/DST_TRKR_SEED_run3pp_ana538_2025p011_v001-00079516-00000.root \
-  root 0 true
+  DST_TRKR_SEED_run3pp_ana538_2025p011_v001-00079516-00000.root \
+  root/trackcalomatch_5GeV_0.5tower_unsub_00000CaloJet \
+  0 true unsubtracted false 0.5
 ```
 
-The fifth argument `true` enables the jet-charge tree; omitted or `false`
-leaves previous output behavior unchanged.
+The wrapper uses `$HOME/setup.sh`, supports interactive execution and
+Condor scratch execution, and resolves DST basenames with `getinputfiles.pl`.
+Use `scripts/myCondor_TrackCaloMatch_test.job` for the current test.
+The corresponding queue file is `fileLists/file_run79516_00_100Test.list`,
+which is **Git-ignored and must exist on the submit host**.
 
-The macro automatically derives a calorimeter DST path from the run and
-tracking segment. For the first segment of Run 79516 it currently derives:
+The macro parameter `minTowerPt` defaults to 0.0, but a Condor job
+passes its configured eighth argument and overrides that default.
+
+## Expected outputs and QA
+
+With jet-tree output enabled:
 
 ```text
-/sphenix/lustre01/sphnxpro/production/run3pp/physics/pro001_pcdb001_v001/DST_CALOFITTING/run_00079500_00079600/DST_CALOFITTING_run3pp_pro001_pcdb001_v001-00079516-00000.root
+OUTDIR/jet_charge_inputs_<mode>_<run:8digits>_<segment:5digits>_<skip:5digits>.root
 ```
 
-It also opens a separate tracking-cluster DST with the currently hardcoded
-tag `ana556_2025p013_v002`. Verify compatibility with any seed file tagged
-`ana538_2025p011_v001`.
+For example:
 
-### Outputs
-
-Two files are written in the specified output directory:
-
-- `track_calo_pairs_<run>_<segment>_<skip>.root` (existing module)
-- `jet_charge_inputs_<run>_<segment>_<skip>.root` (new module)
-
-Inspect with:
-
-```bash
-root -l root/jet_charge_inputs_00079516_00000_00000.root
+```text
+root/trackcalomatch_5GeV_0.5tower_unsub_00000CaloJet/jet_charge_inputs_unsubtracted_00079516_00000_00000.root
 ```
+
+When `enableTrackToCalo=true`, the macro additionally writes
+`track_calo_pairs_<run>_<segment>_<skip>.root`. When disabled, this
+second file is **not** created.
+
+Check the output using ROOT:
 
 ```cpp
-JetChargeInputTree->Print();
-JetChargeInputTree->Scan("run:event:event_index:n_tracks:n_jets");
-```
-
-## Critical preflight checks
-
-1. Confirm every input manager is consuming the **same collision/event**.
-   `run`, `event` and local `event_index` in a merged topNode are not
-   an independent proof that each originating DST contained the same event.
-   Check input DST event headers and/or the Fun4All sync mechanisms, especially
-   when tracking and calorimeter DSTs have different segment boundaries.
-2. Confirm the 100-to-1 tracking/calo segment conversion used by the existing
-   macro is correct for this data production; it is **not** an event offset.
-3. The original script and macro do not properly parse custom three-column
-   files of the form `1000 filename.root 0`. Use a single ROOT file for
-   the first test. File-list handling should be corrected separately before
-   bulk Condor production.
-4. Verify input calibration, vertex choice, tower quality, and jet energy
-   selection. This first implementation is **unsubtracted** pp calorimeter
-   jets, not a calibrated final physics-level jet-charge measurement.
-5. Run a small event sample on an sPHENIX node and confirm compilation,
-   expected input nodes, stable event counts, and sensible kinematics.
-   The GitHub changes were not compiled against the site's installed release.
-
-## Jet-charge matching and output
-
-For each accepted jet, the module loops over all selected tracks and computes
-`dR = hypot(track_eta - jet_eta, remainder(track_phi - jet_phi, 2*pi))`.
-If `dR < 0.4`, that track contributes to the jet charge:
-
-`Q_kappa = sum(q_track * pow(track_pt, kappa)) / pow(jet_pt, kappa)`.
-
-Default `kappa=1.0` and matching radius `R=0.4`. To change these, call
-`jetTree->setJetChargeKappa(0.5)` and/or
-`jetTree->setTrackJetMatchR(0.4)` in the macro before registering it.
-These settings are also saved as event-level branches `jet_charge_kappa`
-and `track_jet_match_r`.
-
-New jet-level vector branches:
-
-- `jet_charge`: calculated charge, NaN for zero-pT jet
-- `jet_charge_numerator`: signed weighted track pT sum
-- `jet_n_matched_tracks`: number of accepted tracks inside cone
-- `jet_matched_track_pt_sum`: scalar matched-track pT sum
-
-Flattened matching arrays:
-
-- `jet_track_offset`: length `n_jets + 1`; jet j matches in
-  `[jet_track_offset[j], jet_track_offset[j+1])`
-- `jet_track_index`: indices into event-level `track_*` arrays
-- `jet_track_delta_r`: corresponding match distance
-
-No match gives charge zero for positive-pT jets. Track associations are
-**exclusive**: each selected track is assigned only to the nearest stored
-jet axis if its DeltaR is strictly less than the configured matching radius.
-The first stored jet wins exact distance ties. Jets rejected by jet pT cuts
-are not eligible for assignment. Track directions use reconstructed momentum
-eta/phi, **not** track extrapolations at the calorimeter surface.
-
-## Offline geometric association
-
-For each event entry and each jet j, loop through its track arrays:
-
-```cpp
-float dphi = TVector2::Phi_mpi_pi(track_phi[i] - jet_phi[j]);
-float deta = track_eta[i] - jet_eta[j];
-float dr = std::hypot(deta, dphi);
-if (dr < 0.4) {
-  // candidate charged track in this calorimeter jet
+TFile *f = TFile::Open("jet_charge_inputs_unsubtracted_00079516_00000_00000.root");
+TTree *t = nullptr;
+f->GetObject("JetChargeInputTree", t);
+if (t) {
+  t->Print();
+  t->Scan("run:event:event_index:n_tracks:n_jets", "", "", 10);
 }
 ```
 
-Jet charge `Q_kappa = sum(q_i * pt_i^kappa)/jet_pt^kappa` can be
-calculated after deciding quality cuts, eta acceptance, jet pT selections and
-the track-to-jet association convention.
+Generate jet and jet-charge QA plots from the `analysis` directory:
+
+```bash
+root -l -b -q 'plot_jetcharge_tree.C("../root/trackcalomatch_5GeV_0.5tower_unsub_00000CaloJet/jet_charge_inputs_unsubtracted_00079516_00000_00000.root","plots_unsub",5.0,0.7)'
+```
+
+The plotting macro infers **Sub1 versus unsubtracted** from the input ROOT
+filename first, falling back to the directory name. It can also annotate
+directory tags such as `5GeV` and `0.5tower`; these are **unverified
+filename labels**, not authoritative cut metadata inside the tree. Plotting
+cuts passed as the third and fourth arguments are independent of the
+reconstruction selections.
+
+## Production checks
+
+- Test a small event sample after environment or reconstruction changes.
+- Confirm input streams are synchronized and the selected jet node exists.
+- Compare jet multiplicity, pT, mass, and charge with and without the
+  additional tower selection; validate tower constituent energies.
+- Confirm `JetChargeInputTree` entry count, vector lengths, offsets,
+  and unique `(run,event)` identifiers across merged segments.
+- Validate your Condor queue file, output directory, and input production
+  before large-scale submission.
+- If enabling `TrackToCalo` in the future: the macro currently registers
+  a **second EMCal cluster builder** alongside `Process_Calo_Calib()`.
+  Consolidate those builders before relying on TrackToCalo cluster results.
