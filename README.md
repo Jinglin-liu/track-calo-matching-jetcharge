@@ -1,7 +1,14 @@
 # Track-Calo Matching Tutorial for sPHENIX
 
-Hands-on examples for track projection, calorimeter matching, and a
-KFParticle photon-conversion analysis in sPHENIX.
+Hands-on examples for track projection, calorimeter matching, a
+KFParticle photon-conversion analysis, and an event-level calorimeter jet-charge
+workflow in sPHENIX.
+
+For the active Run25 jet-charge workflow, see
+[analysis/README_JET_CHARGE_INPUTS.md](analysis/README_JET_CHARGE_INPUTS.md)
+and [scripts/CONDOR_TRACKCALO_TEST.md](scripts/CONDOR_TRACKCALO_TEST.md).
+The TrackToCalo-only examples below document the older teaching workflow;
+the current jet-charge Condor examples disable TrackToCalo.
 
 This repository is organized by file purpose rather than by separate
 tutorials.  The same matching concepts are demonstrated in two ways:
@@ -93,8 +100,9 @@ make install
 cd ..
 ```
 
-The tutorial library builds only `TrackToCalo.cc`; the module directory does
-not contain unrelated ntuple, truth-matching, or detector-only classes.
+The current local library builds both `TrackToCalo.cc` and
+`JetChargeTreeMaker.cc`. Macro and plotting-only edits do not require a library
+rebuild if the installed module library is already current.
 
 ### Configure the matching
 
@@ -124,10 +132,16 @@ From the repository root:
   0
 ```
 
-The arguments are the number of events, input ROOT file or list, output
-directory, and number of events to skip.  The input handling and reconstruction
-steps are the same as `Fun4All_KFP_Conv.C`.  The output is named
-`track_calo_pairs_RUN_SEGMENT_SKIP.root` and contains `TrackCaloTree`.
+The full current wrapper takes eight arguments:
+`NEVENTS INPUT OUTDIR NSKIP WRITE_JET_TREE JET_MODE ENABLE_TRACK_TO_CALO MIN_TOWER_PT`.
+The four-argument command above now uses wrapper defaults, which enable
+`JetChargeTreeMaker` and `TrackToCalo`, select unsubtracted jets, and use
+no additional constituent cut. To run the **TrackToCalo-only** example,
+pass `false unsubtracted true 0.0` as arguments 5–8. For current jet-charge
+tests, pass `true unsubtracted false 0.5` instead. If enabled, TrackToCalo
+writes `track_calo_pairs_RUN_SEGMENT_SKIP.root` with `TrackCaloTree`;
+JetChargeTreeMaker writes `jet_charge_inputs_MODE_RUN_SEGMENT_SKIP.root`.
+For a reproducible Run25 setup, follow the linked jet-charge guide.
 
 The tree stores event identifiers, track ID, `track_momentum`, the projected
 `state_position_emcal` and `state_momentum_emcal`, cluster ID/energy and
