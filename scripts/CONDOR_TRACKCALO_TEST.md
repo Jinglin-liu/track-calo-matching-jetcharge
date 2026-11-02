@@ -129,6 +129,77 @@ missing environment setup, or library loading problems appear in the
 job stdout/stderr. The log filename uses the submit-file `Cluster` and
 `Process` macros.
 
+## Full Run 79516 production submission
+
+The separate `scripts/submitCondorTrackCaloMatch.sh` driver reads numbered
+input lists `file_run79516_00.list`, `file_run79516_01.list`, and so on.
+It **excludes** `file_run79516_00_test.list` and
+`file_run79516_00_100Test.list`. It uses
+`scripts/myCondor_TrackCaloMatch.job` as the production template,
+substituting the queue list in a temporary copy for each group. The
+tracked submit template itself is **not modified**.
+
+Commands, from the repository root:
+
+```bash
+# Preview the number of groups and queued jobs; does not submit anything.
+bash scripts/submitCondorTrackCaloMatch.sh --run 79516
+
+# Submit only group 00 as a first production check.
+bash scripts/submitCondorTrackCaloMatch.sh --run 79516 --group 00 --submit
+
+# Submit all numbered groups after checking the preview.
+bash scripts/submitCondorTrackCaloMatch.sh --run 79516 --submit
+```
+
+**Do not run both submission commands for group 00 and all groups without
+accounting for duplicate jobs:** the all-groups command includes group 00.
+Use the selected group(s) with `--group NN` to avoid resubmitting
+a group already processed.
+
+The script validates nonempty three-column rows and the tracking DST's
+embedded run number. The template controls `JetMode`, `minTowerPt`,
+output directory, and resource settings. The production template currently
+uses unsubtracted jets with `minTowerPt=0.0` and a dedicated production
+output directory. Edit these settings before submission if you want Sub1
+jets or a 0.5 GeV/c tower constituent cut. Use a distinct output directory
+for each reconstruction configuration.
+
+### How the run number and arguments reach the macro
+
+1. `--run 79516` selects the local numbered lists
+   `file_run79516_NN.list`. The run is **not** passed as a separate
+   positional argument to the wrapper.
+2. Every non-comment row, e.g.
+   `1000 DST_TRKR_SEED_run3pp_ana538_2025p011_v001-00079516-00000.root 0`,
+   becomes one Condor job via `queue events,file,skip from ...`.
+3. The .job `arguments` line expands those row variables to
+   `events, file, OutDir, skip, true, JetMode, false, minTowerPt`,
+   passed in that order to `runTrackCaloMatch.sh`.
+4. The wrapper invokes `Fun4All_TrackCaloMatch.C` with `convertSeeds=false`
+   inserted as macro argument five. The remaining selections retain
+   their wrapper meanings.
+5. `Fun4All_TrackCaloMatch.C` calls
+   `Fun4AllUtils::GetRunSegment(inputDST)` on the input tracking DST
+   **filename** to determine run 79516 and the tracking segment, uses
+   `rc->set_IntFlag("RUNNUMBER", runnumber)` and sets the CDB timestamp,
+   then selects the calorimeter DST via `tracking_segment / 100`.
+
+For example, a row with `events=1000`, tracking segment `00000`, and
+`skip=0`, together with the current production template, executes
+the equivalent of:
+
+```bash
+./scripts/runTrackCaloMatch.sh 1000 \
+  DST_TRKR_SEED_run3pp_ana538_2025p011_v001-00079516-00000.root \
+  /sphenix/user/jlnliu/projects/track-calo-matching/track-calo-matching-jetcharge/root/trackcalomatch_5GeV_unsub_run79516 \
+  0 true unsubtracted false 0.0
+```
+
+Input files in a group may have different tracking segment numbers; the
+same run number is extracted independently for every Condor job. Output
+filenames include the run, segment and skip to distinguish jobs.
+
 ## Plot the results
 
 From `analysis/`:
