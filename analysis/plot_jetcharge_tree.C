@@ -5,8 +5,8 @@
 // arrays (which dominate the file size) are not touched.
 //
 // Examples:
-// root -l -b -q 'plot_jetcharge_tree.C("jet_charge_inputs_sub1_00079516_99999_99999_sub1.root")'
-// root -l -b -q 'plot_jetcharge_tree.C("input.root","plots_sub1",2.0,0.7)'
+// root -l -b -q 'plot_jetcharge_tree.C("../root/trackcalomatch_5GeV_0.5tower_unsub_00000CaloJet/jet_charge_inputs_unsubtracted_00079516_00000_00000.root")'
+// root -l -b -q 'plot_jetcharge_tree.C("../root/trackcalomatch_0GeV_sub1_00000CaloJet/jet_charge_inputs_sub1_00079516_00000_00000.root","plots_sub1",5.0,0.7)'
 //
 // Arguments:
 //   filename       Input ROOT file
@@ -18,6 +18,11 @@
 // the |eta| cut. They do NOT apply minChargeJetPt, for an unbiased spectrum.
 // Jet-charge plots require pT >= minChargeJetPt and |eta| < maxAbsEta.
 // Charge is NaN if jet pT <= 0; unmatched jets have Q=0 when pT>0.
+// Reconstruction mode is inferred from the ROOT filename (preferred) or parent
+// directory: jet_charge_inputs_sub1_*.root, jet_charge_inputs_unsubtracted_*.root,
+// trackcalomatch_*_sub1_*, trackcalomatch_*_unsub_*.
+// Optional directory tags such as 5GeV and 0.5tower annotate plots; these are
+// labels only and do not override/validate the actual production selections.
 
 #include <TCanvas.h>
 #include <TFile.h>
@@ -33,12 +38,68 @@
 #include <TTreeReaderValue.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <regex>
 #include <string>
 #include <vector>
+
+namespace
+{
+  struct JetPlotSource
+  {
+    std::string mode = "Calorimeter";
+    std::string jetCut;
+    std::string towerCut;
+  };
+
+  JetPlotSource parseJetPlotSource(const std::string& path)
+  {
+    const auto lower = [](std::string value) {
+      std::transform(value.begin(), value.end(), value.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      return value;
+    };
+    const auto slash = path.find_last_of("/\\");
+    const std::string basename = lower(path.substr(slash == std::string::npos ? 0 : slash + 1));
+    const std::string directory = lower(slash == std::string::npos ? "" : path.substr(0, slash));
+
+    const auto modeOf = [](const std::string& value) {
+      if (value.find("sub1") != std::string::npos) return 1;
+      if (value.find("unsubtracted") != std::string::npos ||
+          value.find("unsub") != std::string::npos) return 2;
+      return 0;
+    };
+    const int fileMode = modeOf(basename);
+    const int dirMode = modeOf(directory);
+    if (fileMode && dirMode && fileMode != dirMode)
+      std::cerr << "WARNING: jet mode in filename conflicts with directory; "
+                   "using filename mode.\\n";
+
+    JetPlotSource result;
+    const int mode = fileMode ? fileMode : dirMode;
+    if (mode == 1) result.mode = "Sub1";
+    else if (mode == 2) result.mode = "Unsubtracted";
+    else std::cerr << "WARNING: cannot determine jet mode from input path; "
+                      "using generic calorimeter label.\\n";
+
+    // Directory names are user-provided metadata, NOT verified TTree cuts.
+    // Prefer tags in the parent directory to an occasional tagged file name.
+    const std::regex jetRe(R"((?:^|[/_])([0-9]+(?:\\.[0-9]+)?)gev(?:[/_]|$))");
+    const std::regex towerRe(R"((?:^|[/_])([0-9]+(?:\\.[0-9]+)?)tower(?:[/_]|$))");
+    std::smatch match;
+    if (std::regex_search(directory, match, jetRe) ||
+        std::regex_search(basename, match, jetRe))
+      result.jetCut = match[1].str();
+    if (std::regex_search(directory, match, towerRe) ||
+        std::regex_search(basename, match, towerRe))
+      result.towerCut = match[1].str();
+    return result;
+  }
+}
 
 void plot_jetcharge_tree(const char* filename,
                          const char* outputDir = "jetcharge_plots",
@@ -99,6 +160,8 @@ void plot_jetcharge_tree(const char* filename,
   TTreeReaderValue<Int_t> nJets(reader, "n_jets");
   TTreeReaderValue<Float_t> chargeKappa(reader, "jet_charge_kappa");
 
+  const JetPlotSource source = parseJetPlotSource(filename);
+
   TH1::AddDirectory(kFALSE);
   gStyle->SetOptStat(0);
   gStyle->SetTitleSize(0.044, "XY");
@@ -144,6 +207,12 @@ void plot_jetcharge_tree(const char* filename,
   Float_t observedKappa = -1.0f;
 
   std::cout << "Input: " << filename << '\n'
+            << "Inferred reconstruction: " << source.mode << '\n'
+            << "Directory tags (unverified): jet pT >= "
+            << (source.jetCut.empty() ? "unknown" : source.jetCut)
+            << ", tower pT >= "
+            << (source.towerCut.empty() ? "unknown" : source.towerCut)
+            << " GeV/c\\n"
             << "Tree entries: " << tree->GetEntries() << '\n'
             << "Jet-charge cuts: pT >= " << minChargeJetPt
             << " GeV/c, |eta| < " << maxAbsEta << '\n';
@@ -231,9 +300,23 @@ void plot_jetcharge_tree(const char* filename,
   hPtAll->SetLineWidth(2);
   hPtFid->SetLineWidth(2);
   hPtAll->SetMinimum(0.5);
-  hPtAll->SetTitle("Anti-k_{T} R=0.4 Sub1 jet p_{T};Jet p_{T} [GeV/c];Jets / 0.2 GeV/c");
+  const std::string ptTitle = "Anti-k_{T} R=0.4 " + source.mode +
+      " jet p_{T};Jet p_{T} [GeV/c];Jets / 0.2 GeV/c";
+  hPtAll->SetTitle(ptTitle.c_str());
   hPtAll->Draw("HIST");
   hPtFid->Draw("HIST SAME");
+  const auto drawPathCutTags = [&source]() {
+    TLatex label;
+    label.SetNDC();
+    label.SetTextSize(0.029);
+    if (!source.jetCut.empty())
+      label.DrawLatex(0.15, 0.86,
+          ("Path tag: jet p_{T} #geq " + source.jetCut + " GeV/c").c_str());
+    if (!source.towerCut.empty())
+      label.DrawLatex(0.15, 0.80,
+          ("tower p_{T} #geq " + source.towerCut + " GeV/c").c_str());
+  };
+  drawPathCutTags();
   TLegend legend(0.48, 0.73, 0.89, 0.88);
   legend.SetBorderSize(0);
   legend.SetFillStyle(0);
@@ -256,7 +339,7 @@ void plot_jetcharge_tree(const char* filename,
   hChargeMatched->SetLineColor(kRed + 1);
   hChargeAll->SetLineWidth(2);
   hChargeMatched->SetLineWidth(2);
-  hChargeAll->SetTitle("Jet charge: all vs matched;Q^{#kappa};Jets");
+  hChargeAll->SetTitle((source.mode + " jet charge: all vs matched;Q^{#kappa};Jets").c_str());
   hChargeAll->SetMinimum(0.5);
   gPad->SetLogy(true);
   hChargeAll->Draw("HIST");
@@ -293,9 +376,11 @@ void plot_jetcharge_tree(const char* filename,
   gPad->SetLogy();
   hPtAll->Draw("HIST");
   hPtFid->Draw("HIST SAME");
+  drawPathCutTags();
   legend.Draw();
 
   auto cMass = std::make_unique<TCanvas>("cMass", "Jet mass", 900, 680);
+  hMass->SetTitle((source.mode + " jet mass;Jet mass [GeV/c^{2}];Jets").c_str());
   plot1d(hMass.get(), kBlue + 1, true);
 
   struct OutputCanvas { TCanvas* canvas; const char* name; };
