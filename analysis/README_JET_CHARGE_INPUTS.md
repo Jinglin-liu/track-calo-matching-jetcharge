@@ -119,12 +119,14 @@ TrackToCalo disabled):
 ```bash
 ./scripts/runTrackCaloMatch.sh 10 \
   DST_TRKR_SEED_run3pp_ana538_2025p011_v001-00079516-00000.root \
-  root/trackcalomatch_5GeV_0.5tower_unsub_00000CaloJet \
+  "$PWD/root/trackcalomatch_5GeV_0.5tower_unsub_00000CaloJet" \
   0 true unsubtracted false 0.5
 ```
 
-The wrapper uses `$HOME/setup.sh`, supports interactive execution and
-Condor scratch execution, and resolves DST basenames with `getinputfiles.pl`.
+The wrapper changes into `macro/` for interactive execution or Condor scratch
+for batch execution, so specify an **absolute output directory** if calling
+it directly from the repository root. It uses `$HOME/setup.sh`, supports
+both execution modes, and resolves DST basenames with `getinputfiles.pl`.
 Use `scripts/myCondor_TrackCaloMatch_test.job` for the current test.
 The corresponding queue file is `fileLists/file_run79516_00_100Test.list`,
 which is **Git-ignored and must exist on the submit host**.
