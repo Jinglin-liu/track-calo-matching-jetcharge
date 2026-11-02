@@ -1,5 +1,6 @@
 # Submit from the repository root:
-#   condor_submit scripts/myCondor_TrackCaloMatch_test.job
+#   bash scripts/submitCondorTrackCaloMatch.sh --run 79516       # preview
+#   bash scripts/submitCondorTrackCaloMatch.sh --run 79516 --submit
 #
 #   condor_q -nobatch
 #
@@ -10,6 +11,8 @@ PeriodicHold          = (NumJobStarts>=1 && JobStatus == 1)
 getenv                = False
 should_transfer_files = NO
 
+# Production template: the submission driver overrides only the queue-from line
+# for each numbered file_run<run>_<NN>.list. Never point at *_test lists.
 # Resolve all paths relative to the submit directory (repository root).
 RepoDir               = /sphenix/user/jlnliu/projects/track-calo-matching/track-calo-matching-jetcharge
 initialdir            = $(RepoDir)
@@ -17,17 +20,18 @@ executable            = $(RepoDir)/scripts/runTrackCaloMatch.sh
 request_memory        = 6GB
 job_lease_duration    = 3600
 
-OutDir                = $(RepoDir)/root/trackcalomatch_unsub
-output                = $(RepoDir)/log/trackcalomatch_test-$(Cluster)-$(Process).out
-error                 = $(RepoDir)/log/trackcalomatch_test-$(Cluster)-$(Process).err
-log                   = /tmp/jlnliu/trackcalomatch_test-$(Cluster)-$(Process).log
+OutDir                = $(RepoDir)/root/trackcalomatch_5GeV_unsub_run79516
+output                = $(RepoDir)/log/trackcalomatch_prod-$(Cluster)-$(Process).out
+error                 = $(RepoDir)/log/trackcalomatch_prod-$(Cluster)-$(Process).err
+log                   = /tmp/jlnliu/trackcalomatch_prod-$(Cluster)-$(Process).log
 
 # Set to "unsubtracted" (default reconstruction) or "sub1" (sPHENIX Sub1 towers).
 # This is the 6th argument to runTrackCaloMatch.sh; 5th enables jet-charge output;
-# 7the argument switches TrackToCalo module; 8th is the tower pt cut.
+# 7th argument switches TrackToCalo module; 8th is the tower pT cut.
+# Jet pT >= 5 GeV/c and track pT >= 0.5 GeV/c are configured in the ROOT macro.
 JetMode               = unsubtracted
 minTowerPt            = 0.0
 arguments             = $(events) $(file) $(OutDir) $(skip) true $(JetMode) false $(minTowerPt)
 
 # The input is a DST basename; the wrapper uses getinputfiles.pl to resolve it.
-queue events,file,skip from $(RepoDir)/fileLists/file_run79516_00_100Test.list
+queue events,file,skip from $(RepoDir)/fileLists/file_run79516_00.list
