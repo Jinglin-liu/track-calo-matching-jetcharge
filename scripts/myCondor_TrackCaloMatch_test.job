@@ -1,0 +1,34 @@
+# Submit from the repository root:
+#   condor_submit scripts/myCondor_TrackCaloMatch_test.job
+#
+#   condor_q -nobatch
+#
+# This test queues 10 jobs from file_run79516_00_test.list (1000 events each).
+# The submit host and execute nodes must share the repository and output paths.
+universe              = vanilla
+notification          = Never
+PeriodicHold          = (NumJobStarts>=1 && JobStatus == 1)
+getenv                = False
+should_transfer_files = NO
+
+# Resolve all paths relative to the submit directory (repository root).
+RepoDir               = /sphenix/user/jlnliu/projects/track-calo-matching/track-calo-matching-jetcharge
+initialdir            = $(RepoDir)
+executable            = $(RepoDir)/scripts/runTrackCaloMatch.sh
+request_memory        = 6GB
+job_lease_duration    = 3600
+
+OutDir                = $(RepoDir)/root/trackcalomatch_5GeV_0.5tower_unsub_00000CaloJet
+output                = $(RepoDir)/log/trackcalomatch_test-$(Cluster)-$(Process).out
+error                 = $(RepoDir)/log/trackcalomatch_test-$(Cluster)-$(Process).err
+log                   = /tmp/jlnliu/trackcalomatch_test-$(Cluster)-$(Process).log
+
+# Set to "unsubtracted" (default reconstruction) or "sub1" (sPHENIX Sub1 towers).
+# This is the 6th argument to runTrackCaloMatch.sh; 5th enables jet-charge output;
+# 7the argument switches TrackToCalo module; 8th is the tower pt cut.
+JetMode               = unsubtracted
+minTowerPt            = 0.5
+arguments             = $(events) $(file) $(OutDir) $(skip) true $(JetMode) false $(minTowerPt)
+
+# The input is a DST basename; the wrapper uses getinputfiles.pl to resolve it.
+queue events,file,skip from $(RepoDir)/fileLists/file_run79516_00_100Test.list

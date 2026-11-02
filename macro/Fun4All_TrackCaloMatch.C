@@ -6,6 +6,7 @@
 
 #include <fun4all/Fun4AllUtils.h>
 #include <G4_ActsGeom.C>
+#include <HIJetReco.C>
 #include <G4_Global.C>
 #include <G4_Magnet.C>
 #include <G4_Mbd.C>
@@ -30,10 +31,20 @@
 
 #include <trackreco/PHActsTrackProjection.h>
 
+#include <jetbase/FastJetAlgo.h>
+#include <jetbase/Jet.h>
+#include <jetbase/JetReco.h>
+#include <jetbase/TowerJetInput.h>
+
+#include <cmath>
+#include <vector>
+#include <jetbackground/RetowerCEMC.h>
+
 #include <caloreco/CaloGeomMapping.h>
 #include <caloreco/RawClusterBuilderTemplate.h>
 
 #include <track_to_calo/TrackToCalo.h>
+#include <track_to_calo/JetChargeTreeMaker.h>
 #include <trackbase_historic/SvtxTrack.h>
 
 #include <stdio.h>
@@ -49,6 +60,44 @@ namespace TrackToCaloReco
     float cemc_proj_radius = 102.9;
 }
 
+// Filter tower inputs before FastJet, without modifying central sPHENIX libraries.
+// Jet::get_pt() is a magnitude, including for negative-energy Sub1 towers.
+class PtCutTowerJetInput : public TowerJetInput
+{
+ public:
+    PtCutTowerJetInput(Jet::SRC source, double minPt,
+                       const std::string &prefix = "TOWERINFO_CALIB")
+      : TowerJetInput(source, prefix)
+      , m_minPt(minPt)
+    {
+    }
+
+    std::vector<Jet *> get_input(PHCompositeNode *topNode) override
+    {
+        auto inputs = TowerJetInput::get_input(topNode);
+        if (m_minPt <= 0.0) return inputs;
+
+        std::vector<Jet *> accepted;
+        accepted.reserve(inputs.size());
+        for (auto *tower : inputs)
+        {
+            if (tower && std::isfinite(tower->get_pt()) &&
+                tower->get_pt() >= m_minPt)
+            {
+                accepted.push_back(tower);
+            }
+            else
+            {
+                delete tower;
+            }
+        }
+        return accepted;
+    }
+
+ private:
+    double m_minPt;
+};
+
 using namespace TrackToCaloReco;
 
 R__LOAD_LIBRARY(libfun4all.so)
@@ -56,6 +105,8 @@ R__LOAD_LIBRARY(libffamodules.so)
 R__LOAD_LIBRARY(libphool.so)
 R__LOAD_LIBRARY(libcdbobjects.so)
 R__LOAD_LIBRARY(libtrack_to_calo.so)
+R__LOAD_LIBRARY(libjetbase.so)
+R__LOAD_LIBRARY(libjetbackground.so)
 
 bool IsListFile = false;
 bool IsDstFile = false;
@@ -122,12 +173,31 @@ std::string GetRunInfo(const std::string &filename)
     return "";
 }
 
-void Fun4All_TrackCaloMatch(const int nEvents = -1,
+void Fun4All_TrackCaloMatch(const int nEvents = 100,
                 const std::string inputDST = "DST_TRKR_SEED_run3pp_ana538_2025p011_v001-00079516-00000.root",
                 const std::string outDir = "./",
                 const int nSkip = 0,
-                const bool convertSeeds = false)
+                const bool convertSeeds = false,
+                const bool writeJetChargeTree = true,
+                const std::string jetMode = "unsubtracted", // "unsubtracted" or "sub1"
+                const bool enableTrackToCalo = false,
+                const double minTowerPt = 0.0)
 {
+    if (writeJetChargeTree && jetMode != "unsubtracted" && jetMode != "sub1")
+    {
+        std::cerr << "Invalid jetMode: " << jetMode << std::endl;
+        gSystem->Exit(1);
+        return;
+    }
+
+    if (!std::isfinite(minTowerPt) || minTowerPt < 0.0)
+    {
+        std::cerr << "Invalid minTowerPt: " << minTowerPt
+                  << " (must be finite and >= 0 GeV/c)" << std::endl;
+        gSystem->Exit(1);
+        return;
+    }
+
     auto se = Fun4AllServer::instance();
     se->Verbosity(1);
     // se->VerbosityDownscale(500);
@@ -425,26 +495,147 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
         se->registerSubsystem(cgm);
 	*/
 
-        //////////////////
-        // Clusters
-        std::cout << "Building clusters" << std::endl;
-        RawClusterBuilderTemplate *ClusterBuilder = new RawClusterBuilderTemplate("EmcRawClusterBuilderTemplate");
-        ClusterBuilder->Detector("CEMC");
-        ClusterBuilder->set_UseDetailedGeometry(true);
-        ClusterBuilder->set_threshold_energy(0.070); // for when using basic calibration
-        const char *calibrationRoot = getenv("CALIBRATIONROOT");
-        if (!calibrationRoot)
+        // The standard Process_Calo_Calib() above already builds CEMC clusters.
+        // Only retain this legacy second builder for TrackToCalo-enabled runs.
+        // NOTE: when enabled, both builders still target CLUSTERINFO_CEMC.
+        if (enableTrackToCalo)
         {
-            std::cerr << "CALIBRATIONROOT is not set; did you run sphenix_setup.sh?" << std::endl;
+            //////////////////
+            // Clusters
+            std::cout << "Building clusters" << std::endl;
+            RawClusterBuilderTemplate *ClusterBuilder = new RawClusterBuilderTemplate("EmcRawClusterBuilderTemplate");
+            ClusterBuilder->Detector("CEMC");
+            ClusterBuilder->set_UseDetailedGeometry(true);
+            ClusterBuilder->set_threshold_energy(0.070); // for when using basic calibration
+            const char *calibrationRoot = getenv("CALIBRATIONROOT");
+            if (!calibrationRoot)
+            {
+                std::cerr << "CALIBRATIONROOT is not set; did you run sphenix_setup.sh?" << std::endl;
+                gSystem->Exit(1);
+                return;
+            }
+            std::string emc_prof = calibrationRoot;
+            emc_prof += "/EmcProfile/CEMCprof_Thresh30MeV.root";
+            // ClusterBuilder->set_UseAltZVertex(3); //0: GlobalVertexMap, 1: MbdVertexMap, 2: Nothing, 3: G4TruthInfo
+            ClusterBuilder->LoadProfile(emc_prof);
+            ClusterBuilder->set_UseTowerInfo(1); // to use towerinfo objects rather than old RawTower
+            se->registerSubsystem(ClusterBuilder);
+        }
+    }
+
+
+    // Optional event-level jet-charge inputs. Register after calibrated towers
+    // and global vertex reconstruction, before the output writer. Retowered
+    // CEMC, HCALIN and HCALOUT are clustered into anti-kT R=0.4 calo jets.
+    // Track-jet geometric association is intentionally deferred to analysis.
+    if (writeJetChargeTree)
+    {
+        std::cout << "Calo-jet constituent pT threshold: " << minTowerPt
+                  << " GeV/c (0 = original tower inputs)" << std::endl;
+        if (!get_calo_info)
+        {
+            std::cerr << "JetChargeTreeMaker requires get_calo_info" << std::endl;
             gSystem->Exit(1);
             return;
         }
-        std::string emc_prof = calibrationRoot;
-        emc_prof += "/EmcProfile/CEMCprof_Thresh30MeV.root";
-        // ClusterBuilder->set_UseAltZVertex(3); //0: GlobalVertexMap, 1: MbdVertexMap, 2: Nothing, 3: G4TruthInfo
-        ClusterBuilder->LoadProfile(emc_prof);
-        ClusterBuilder->set_UseTowerInfo(1); // to use towerinfo objects rather than old RawTower
-        se->registerSubsystem(ClusterBuilder);
+
+        if (jetMode == "unsubtracted")
+        {
+            auto *retower = new RetowerCEMC("RetowerCEMC_JetCharge");
+            retower->set_towerinfo(true);
+            retower->set_frac_cut(0.5);
+            se->registerSubsystem(retower);
+
+            auto *jetReco = new JetReco("JetReco_JetCharge");
+            jetReco->add_input(new PtCutTowerJetInput(Jet::CEMC_TOWERINFO_RETOWER, minTowerPt));
+            jetReco->add_input(new PtCutTowerJetInput(Jet::HCALIN_TOWERINFO, minTowerPt));
+            jetReco->add_input(new PtCutTowerJetInput(Jet::HCALOUT_TOWERINFO, minTowerPt));
+            jetReco->add_algo(new FastJetAlgo(Jet::ANTIKT, 0.4),
+                              "AntiKt_unsubtracted_r04");
+            jetReco->set_algo_node("ANTIKT");
+            jetReco->set_input_node("TOWER");
+            se->registerSubsystem(jetReco);
+        }
+        else if (jetMode == "sub1")
+        {
+            // Official sPHENIX HIJetReco.C tower subtraction sequence:
+            // retower -> raw R=0.2 seeds -> background -> subtracted seeds
+            // -> refined background -> subtracted towers -> anti-kT jets.
+            HIJETS::tower_prefix = "TOWERINFO_CALIB";
+            HIJETS::do_flow = 0;
+            HIJETS::do_CS = false;
+            HIJETS::is_pp = true;
+            Enable::HIJETS_MC = false;
+            Enable::HIJETS_TRUTH = false;
+            Enable::HIJETS_TOWER = true;
+            Enable::HIJETS_TRACK = false;
+            Enable::HIJETS_PFLOW = false;
+            HIJetReco();
+
+            if (minTowerPt > 0.0)
+            {
+                // Keep official seed finding and background subtraction unchanged.
+                // Cluster an additional final R=0.4 collection using |tower pT|
+                // >= minTowerPt. Negative-energy Sub1 towers are retained by
+                // magnitude and FastJetAlgoSub handles their signed energies.
+                auto *filteredReco = new JetReco("JetReco_Sub1_TowerPtCut");
+                auto *cemcInput = new PtCutTowerJetInput(
+                    Jet::CEMC_TOWERINFO_SUB1, minTowerPt, HIJETS::tower_prefix);
+                auto *ihcalInput = new PtCutTowerJetInput(
+                    Jet::HCALIN_TOWERINFO_SUB1, minTowerPt, HIJETS::tower_prefix);
+                auto *ohcalInput = new PtCutTowerJetInput(
+                    Jet::HCALOUT_TOWERINFO_SUB1, minTowerPt, HIJETS::tower_prefix);
+                if (HIJETS::do_vertex_type)
+                {
+                    cemcInput->set_GlobalVertexType(HIJETS::vertex_type);
+                    ihcalInput->set_GlobalVertexType(HIJETS::vertex_type);
+                    ohcalInput->set_GlobalVertexType(HIJETS::vertex_type);
+                }
+                filteredReco->add_input(cemcInput);
+                filteredReco->add_input(ihcalInput);
+                filteredReco->add_input(ohcalInput);
+                filteredReco->add_algo(HIJETS::GetFJAlgo(0.4),
+                                       "AntiKt_Tower_r04_Sub1_PtCut");
+                filteredReco->set_algo_node(HIJETS::jet_node);
+                filteredReco->set_input_node("TOWER");
+                se->registerSubsystem(filteredReco);
+            }
+        }
+        else
+        {
+            std::cerr << "Unknown jetMode '" << jetMode
+                      << "'; expected 'unsubtracted' or 'sub1'" << std::endl;
+            gSystem->Exit(1);
+            return;
+        }
+
+        std::string jetTreePath = outDir;
+        if (!jetTreePath.empty() && jetTreePath.back() != '/')
+        {
+            jetTreePath += "/";
+        }
+        gSystem->mkdir(jetTreePath.c_str(), true);
+        jetTreePath += "jet_charge_inputs_" + jetMode + "_" + nice_runnumber.str()
+                    + "_" + nice_segment.str()
+                    + "_" + nice_skip.str() + ".root";
+
+        auto *jetTree = new JetChargeTreeMaker("JetChargeTreeMaker");
+        jetTree->setOutputFile(jetTreePath);
+        const std::string jetNode = (jetMode == "unsubtracted")
+            ? "AntiKt_unsubtracted_r04"
+            : (minTowerPt > 0.0 ? "AntiKt_Tower_r04_Sub1_PtCut"
+                                : "AntiKt_Tower_r04_Sub1");
+        std::cout << "JetChargeTreeMaker jet node: " << jetNode << std::endl;
+        jetTree->setJetNode(jetNode);
+        jetTree->setUseSubtractedTowers(jetMode == "sub1");
+        jetTree->setTrackPtMin(0.5); // 0.2 GeV/c by track calo matching
+        jetTree->setTrackQualityMax(300.);
+        jetTree->setMinTpcClusters(22);
+        jetTree->requireCrossingZero(true);
+        jetTree->setJetPtMin(5.0);
+        // JetChargeTreeMaker logs an event summary every 100 entries when Verbosity > 0.
+        jetTree->Verbosity(1);
+        se->registerSubsystem(jetTree);
     }
 
     // ---------------------------------------------------------------------
@@ -452,27 +643,35 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
     // Fun4All_KFP_Conv.C.  This final registration block is the direct
     // TrackToCalo-specific part of the tutorial.
     // ---------------------------------------------------------------------
-    std::string output_path = outDir;
-    if (!output_path.empty() && output_path.back() != '/')
+    std::string output_path;
+    if (enableTrackToCalo)
     {
-        output_path += "/";
+        output_path = outDir;
+        if (!output_path.empty() && output_path.back() != '/')
+        {
+            output_path += "/";
+        }
+        gSystem->mkdir(output_path.c_str(), true);
+        output_path += "track_calo_pairs_" + nice_runnumber.str() + "_" + nice_segment.str() + "_" + nice_skip.str() + ".root";
+    
+        auto *matcher = new TrackToCalo("TrackToCalo");
+        matcher->SetOutputFileName(output_path);
+        matcher->EMcalRadiusUser(true);
+        matcher->setEMcalRadius(cemc_proj_radius);
+        matcher->setTrackPtLowCut(0.2);
+        matcher->setTrackQuality(300.);
+        matcher->setnTpcClusters(22);
+        matcher->requireCrossingZero(true);
+        matcher->setEmcalELowCut(0.2);
+        matcher->setdphicut(0.10);
+        matcher->setdzcut(10.);
+        matcher->Verbosity(1);
+        se->registerSubsystem(matcher);
     }
-    gSystem->mkdir(output_path.c_str(), true);
-    output_path += "track_calo_pairs_" + nice_runnumber.str() + "_" + nice_segment.str() + "_" + nice_skip.str() + ".root";
-
-    auto *matcher = new TrackToCalo("TrackToCalo");
-    matcher->SetOutputFileName(output_path);
-    matcher->EMcalRadiusUser(true);
-    matcher->setEMcalRadius(cemc_proj_radius);
-    matcher->setTrackPtLowCut(0.2);
-    matcher->setTrackQuality(300.);
-    matcher->setnTpcClusters(22);
-    matcher->requireCrossingZero(true);
-    matcher->setEmcalELowCut(0.2);
-    matcher->setdphicut(0.10);
-    matcher->setdzcut(10.);
-    matcher->Verbosity(1);
-    se->registerSubsystem(matcher);
+    else
+    {
+        std::cout << "TrackToCalo disabled (no track_calo_pairs output)." << std::endl;
+    }
 
     se->skip(nSkip);
     se->run(nEvents);
@@ -481,7 +680,14 @@ void Fun4All_TrackCaloMatch(const int nEvents = -1,
 
     delete se;
 
-    std::cout << "Finished. Track-calo pairs were written to " << output_path
-              << std::endl;
+    if (enableTrackToCalo)
+    {
+        std::cout << "Finished. Track-calo pairs were written to " << output_path
+                  << std::endl;
+    }
+    else
+    {
+        std::cout << "Finished. TrackToCalo was disabled." << std::endl;
+    }
     gSystem->Exit(0);
 }
