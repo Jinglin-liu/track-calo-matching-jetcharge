@@ -77,19 +77,19 @@ namespace
     const int dirMode = modeOf(directory);
     if (fileMode && dirMode && fileMode != dirMode)
       std::cerr << "WARNING: jet mode in filename conflicts with directory; "
-                   "using filename mode.\\n";
+                   "using filename mode.\n";
 
     JetPlotSource result;
     const int mode = fileMode ? fileMode : dirMode;
     if (mode == 1) result.mode = "Sub1";
     else if (mode == 2) result.mode = "Unsubtracted";
     else std::cerr << "WARNING: cannot determine jet mode from input path; "
-                      "using generic calorimeter label.\\n";
+                      "using generic calorimeter label.\n";
 
     // Directory names are user-provided metadata, NOT verified TTree cuts.
     // Prefer tags in the parent directory to an occasional tagged file name.
-    const std::regex jetRe(R"((?:^|[/_])([0-9]+(?:\\.[0-9]+)?)gev(?:[/_]|$))");
-    const std::regex towerRe(R"((?:^|[/_])([0-9]+(?:\\.[0-9]+)?)tower(?:[/_]|$))");
+    const std::regex jetRe(R"((?:^|[/_])([0-9]+(?:\.[0-9]+)?)gev(?:[/_]|$))");
+    const std::regex towerRe(R"((?:^|[/_])([0-9]+(?:\.[0-9]+)?)tower(?:[/_]|$))");
     std::smatch match;
     if (std::regex_search(directory, match, jetRe) ||
         std::regex_search(basename, match, jetRe))
@@ -212,7 +212,7 @@ void plot_jetcharge_tree(const char* filename,
             << (source.jetCut.empty() ? "unknown" : source.jetCut)
             << ", tower pT >= "
             << (source.towerCut.empty() ? "unknown" : source.towerCut)
-            << " GeV/c\\n"
+            << " GeV/c\n"
             << "Tree entries: " << tree->GetEntries() << '\n'
             << "Jet-charge cuts: pT >= " << minChargeJetPt
             << " GeV/c, |eta| < " << maxAbsEta << '\n';
