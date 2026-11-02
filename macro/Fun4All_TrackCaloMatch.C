@@ -179,7 +179,7 @@ void Fun4All_TrackCaloMatch(const int nEvents = 100,
                 const int nSkip = 0,
                 const bool convertSeeds = false,
                 const bool writeJetChargeTree = true,
-                const std::string jetMode = "unsubtracted",
+                const std::string jetMode = "unsubtracted", // "unsubtracted" or "sub1"
                 const bool enableTrackToCalo = false,
                 const double minTowerPt = 0.0)
 {
