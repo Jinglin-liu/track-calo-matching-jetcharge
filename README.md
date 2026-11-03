@@ -5,7 +5,9 @@ KFParticle photon-conversion analysis, and an event-level calorimeter jet-charge
 workflow in sPHENIX.
 
 For the active Run25 jet-charge workflow, see
-[analysis/README_JET_CHARGE_INPUTS.md](analysis/README_JET_CHARGE_INPUTS.md)
+[analysis/README_JET_CHARGE_INPUTS.md](analysis/README_JET_CHARGE_INPUTS.md),
+[analysis/README_JET_CHARGE_PLOTTING.md](analysis/README_JET_CHARGE_PLOTTING.md)
+(TChain production QA and separate histogram-making/drawing macros),
 and [scripts/CONDOR_TRACKCALO_TEST.md](scripts/CONDOR_TRACKCALO_TEST.md).
 The TrackToCalo-only examples below document the older teaching workflow;
 the current jet-charge Condor examples disable TrackToCalo.
