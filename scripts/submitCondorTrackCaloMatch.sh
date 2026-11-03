@@ -33,7 +33,8 @@ Options:
 
 Only file_run<run>_<NN>.list is accepted, e.g. file_run79516_00.list.
 Files such as file_run79516_00_test.list and _100Test.list are excluded.
-The .job template controls JetMode, minTowerPt, output and memory settings.
+The .job template controls JetMode, minTowerPt, base OutDir and memory settings.
+The driver appends _run<run> to OutDir in each temporary submit file.
 Each line in a numbered list is: EVENTS DST_BASENAME SKIP.
 EOF
 }
@@ -79,6 +80,7 @@ cd "$repo_dir"
 
 shopt -s nullglob
 selected=()
+selected_runs=()
 counts=()
 total_jobs=0
 
@@ -123,6 +125,7 @@ for run in "${runs[@]}"; do
     ' "$path") || exit 1
 
     selected+=("$path")
+    selected_runs+=("$run")
     counts+=("$job_count")
     ((total_jobs += job_count))
     ((matched_for_run += 1))
@@ -134,23 +137,33 @@ for run in "${runs[@]}"; do
   fi
 done
 
-# Don't modify the tracked submit template: make a temporary copy with its
-# single queue-from line redirected to the chosen input list.
+# Don't modify the tracked submit template: make a temporary copy with
+# run-specific OutDir and the selected input list.
 temp_job=$(mktemp "${TMPDIR:-/tmp}/trackcalomatch_submit.XXXXXXXX.job")
 trap 'rm -f "$temp_job"' EXIT
 
 make_submit_file() {
   local input_list=$1
-  awk -v input_list="$input_list" '
+  local run=$2
+
+  # Only the temporary submit description is changed. Every group of the
+  # same run shares one output directory, while different runs are separate.
+  awk -v input_list="$input_list" -v run="$run" '
+    tolower($0) ~ /^[[:space:]]*outdir[[:space:]]*=/ {
+      sub(/[[:space:]]*$/, "", $0)
+      print $0 "_run" run
+      found_outdir++
+      next
+    }
     tolower($0) ~ /^[[:space:]]*queue[[:space:]]+events,file,skip[[:space:]]+from[[:space:]]/ {
       print "queue events,file,skip from " input_list
-      found++
+      found_queue++
       next
     }
     { print }
     END {
-      if (found != 1) {
-        print "Expected exactly one queue events,file,skip from line" > "/dev/stderr"
+      if (found_outdir != 1 || found_queue != 1) {
+        print "Expected exactly one OutDir and queue events,file,skip from line" > "/dev/stderr"
         exit 1
       }
     }
@@ -158,15 +171,15 @@ make_submit_file() {
 }
 
 # Preflight the submit-file template before any jobs are submitted.
-make_submit_file "${selected[0]}"
+make_submit_file "${selected[0]}" "${selected_runs[0]}"
 echo "Submit template: $submit_file"
 echo "Run(s): ${runs[*]}"
 echo "Groups: ${#selected[@]}"
 echo "Total Condor jobs (queue rows): $total_jobs"
-echo "Settings from submit template:"
+echo "Settings from submit template (OutDir is a base path):"
 grep -Ei '^[[:space:]]*(JetMode|minTowerPt|OutDir|arguments)[[:space:]]*=' "$submit_file" || true
 for i in "${!selected[@]}"; do
-  echo "  ${selected[i]##*/}: ${counts[i]} jobs"
+  echo "  Run ${selected_runs[i]}, ${selected[i]##*/}: ${counts[i]} jobs"
 done
 
 if [[ "$submit" != true ]]; then
@@ -184,8 +197,8 @@ command -v condor_submit >/dev/null || {
 mkdir -p "$repo_dir/log" "$repo_dir/root" "/tmp/$(id -un)"
 echo "Submitting ${#selected[@]} groups ($total_jobs jobs)."
 for i in "${!selected[@]}"; do
-  make_submit_file "${selected[i]}"
-  echo "Submitting ${selected[i]##*/} (${counts[i]} jobs)"
+  make_submit_file "${selected[i]}" "${selected_runs[i]}"
+  echo "Submitting Run ${selected_runs[i]}, ${selected[i]##*/} (${counts[i]} jobs)"
   condor_submit "$temp_job"
 done
 echo "Submission complete; check with: condor_q -nobatch"
