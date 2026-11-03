@@ -5,6 +5,7 @@
 // root -l -b -q 'draw_jetcharge_histograms.C("plots_run79516/jetcharge_histograms.root","plots_run79516/figures")'
 
 #include "JetChargePlotHelpers.h"
+#include "AnalysisUtils.h"  // sPHENIX Internal and pp sqrt(s) label
 
 #include <TCanvas.h>
 #include <TFile.h>
@@ -151,6 +152,8 @@ bool draw_jetcharge_histograms(const char* histogramFile,
 
   cJetQA->cd(2);
   plot1d(hEta, kBlue + 1);
+  auto tagJetQA = AnalysisUtils::makeSphenixTag(0.51, 0.77, 0.91, 0.92);
+  tagJetQA->Draw();
   cJetQA->cd(3);
   plot1d(hPhi, kBlue + 1);
   cJetQA->cd(4);
@@ -178,6 +181,8 @@ bool draw_jetcharge_histograms(const char* histogramFile,
 
   cChargeQA->cd(2);
   plot1d(hChargeMatched, kRed + 1, true);
+  auto tagChargeQA = AnalysisUtils::makeSphenixTag(0.51, 0.77, 0.91, 0.92);
+  tagChargeQA->Draw();
   cChargeQA->cd(3);
   plot1d(hNMatched, kBlue + 1, true);
   cChargeQA->cd(4);
@@ -195,18 +200,27 @@ bool draw_jetcharge_histograms(const char* histogramFile,
   plot1d(hCharge5to10, kOrange + 7, true);
   cChargeSlices->cd(3);
   plot1d(hCharge10plus, kRed + 1, true);
+  auto tagChargeSlices = AnalysisUtils::makeSphenixTag(0.51, 0.77, 0.91, 0.92);
+  tagChargeSlices->Draw();
 
   // Extra single-panel pT spectrum and jet-mass QA.
   auto cPt = std::make_unique<TCanvas>("cPt", "Jet pT spectrum", 900, 680);
+  cPt->cd();
   gPad->SetLogy();
   hPtAll->Draw("HIST");
   hPtFid->Draw("HIST SAME");
   drawPathCutTags();
   legend.Draw();
+  // Keep the tag clear of the upper-right legend and upper-left cut labels.
+  auto tagPt = AnalysisUtils::makeSphenixTag(0.53, 0.55, 0.91, 0.69);
+  tagPt->Draw();
 
   auto cMass = std::make_unique<TCanvas>("cMass", "Jet mass", 900, 680);
+  cMass->cd();
   hMass->SetTitle((source.mode + " jet mass;Jet mass [GeV/c^{2}];Jets").c_str());
   plot1d(hMass, kBlue + 1, true);
+  auto tagMass = AnalysisUtils::makeSphenixTag(0.52, 0.77, 0.91, 0.92);
+  tagMass->Draw();
 
   struct OutputCanvas { TCanvas* canvas; const char* name; };
   const OutputCanvas outputs[] = {
