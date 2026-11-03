@@ -15,6 +15,7 @@
 #include <TNamed.h>
 #include <TParameter.h>
 #include <TStyle.h>
+#include <TString.h>
 #include <TSystem.h>
 #include <TPad.h>
 
