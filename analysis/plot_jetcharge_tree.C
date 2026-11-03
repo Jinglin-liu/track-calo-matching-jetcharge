@@ -22,12 +22,12 @@ void plot_jetcharge_tree(const char* filename,
     return;
   }
   const std::string histPath = std::string(outputDir) + "/jetcharge_histograms.root";
-  if (!make_jetcharge_histograms(filename, histPath.c_str(),
-                                 minChargeJetPt, maxAbsEta))
+  if (make_jetcharge_histograms(filename, histPath.c_str(),
+                                minChargeJetPt, maxAbsEta) != 0)
   {
     std::cerr << "ERROR: could not generate histograms; skipping drawing.\n";
     return;
   }
-  if (!draw_jetcharge_histograms(histPath.c_str(), outputDir))
+  if (draw_jetcharge_histograms(histPath.c_str(), outputDir) != 0)
     std::cerr << "ERROR: histogram generation succeeded but drawing failed.\n";
 }
