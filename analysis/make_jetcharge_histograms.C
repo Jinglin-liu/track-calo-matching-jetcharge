@@ -45,6 +45,7 @@ bool make_jetcharge_histograms(const char* inputSpec,
   const std::string spec(inputSpec);
   const bool manifest = spec.size() >= 4 && spec.substr(spec.size() - 4) == ".txt";
   int nFiles = 0;
+  std::string firstInputPath;
   if (manifest)
   {
     std::ifstream list(spec);
@@ -71,6 +72,7 @@ bool make_jetcharge_histograms(const char* inputSpec,
         std::cerr << "ERROR: missing ROOT input: " << path << '\n';
         return false;
       }
+      if (firstInputPath.empty()) firstInputPath = path;
       nFiles += chain.Add(path.c_str());
     }
   }
@@ -120,7 +122,8 @@ bool make_jetcharge_histograms(const char* inputSpec,
   TTreeReaderValue<Int_t> nJets(reader, "n_jets");
   TTreeReaderValue<Float_t> chargeKappa(reader, "jet_charge_kappa");
 
-  const JetChargePlots::JetPlotSource source = JetChargePlots::parseJetPlotSource(spec);
+  const JetChargePlots::JetPlotSource source = JetChargePlots::parseJetPlotSource(
+      firstInputPath.empty() ? spec : firstInputPath);
   // Use identical binning for both pT distributions.
   auto hPtAll = std::make_unique<TH1D>(
       "hPtAll", "All stored jets;Jet p_{T} [GeV/c];Jets / 0.2 GeV/c", 150, 0, 30);
