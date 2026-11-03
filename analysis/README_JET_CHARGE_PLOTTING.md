@@ -175,6 +175,10 @@ Still in `analysis/`:
 root -l -b -q 'draw_jetcharge_histograms.C("plots_run79516_unsubtracted/run79516_histograms.root","plots_run79516_unsubtracted/figures")'
 ```
 
+All five figures include the standard `AnalysisUtils::makeSphenixTag()`
+annotation (`sPHENIX Internal`, `p+p`, `sqrt(s) = 200 GeV`). The label is
+applied only by the drawer; changing it does not alter any histogram contents.
+
 The five output plot names (each PNG and PDF) are:
 
 ```text
