@@ -136,8 +136,9 @@ input lists `file_run79516_00.list`, `file_run79516_01.list`, and so on.
 It **excludes** `file_run79516_00_test.list` and
 `file_run79516_00_100Test.list`. It uses
 `scripts/myCondor_TrackCaloMatch.job` as the production template,
-substituting the queue list in a temporary copy for each group. The
-tracked submit template itself is **not modified**.
+substituting the queue list and appending `_run<run>` to the base `OutDir`
+in a temporary copy for each group. The tracked submit template itself
+is **not modified**.
 
 Commands, from the repository root:
 
@@ -159,9 +160,11 @@ a group already processed.
 
 The script validates nonempty three-column rows and the tracking DST's
 embedded run number. The template controls `JetMode`, `minTowerPt`,
-output directory, and resource settings. The production template currently
-uses unsubtracted jets with `minTowerPt=0.0` and a dedicated production
-output directory. Edit these settings before submission if you want Sub1
+base output directory, and resource settings. The production template currently
+uses unsubtracted jets with `minTowerPt=0.0` and base `OutDir`
+`$(RepoDir)/root/trackcalomatch_5GeV_unsub`. The submission script makes
+per-run directories such as `trackcalomatch_5GeV_unsub_run79516` and
+`trackcalomatch_5GeV_unsub_run79517`. Edit these settings before submission if you want Sub1
 jets or a 0.5 GeV/c tower constituent cut. Use a distinct output directory
 for each reconstruction configuration.
 
@@ -197,8 +200,9 @@ the equivalent of:
 ```
 
 Input files in a group may have different tracking segment numbers; the
-same run number is extracted independently for every Condor job. Output
-filenames include the run, segment and skip to distinguish jobs.
+same run number is extracted independently for every Condor job. The driver
+also appends `_run<run>` to `OutDir` in the temporary submit description.
+Output filenames include the run, segment and skip to distinguish jobs.
 
 ## Plot the results
 
