@@ -19,21 +19,21 @@
 #include <string>
 #include <vector>
 
-bool merge_jetcharge_histograms(const char* groupsDir,
+int merge_jetcharge_histograms(const char* groupsDir,
                                 const char* outputFile,
                                 int expectedGroups = 38)
 {
   if (!groupsDir || !*groupsDir || !outputFile || !*outputFile)
   {
     std::cerr << "ERROR: missing group directory or output file.\n";
-    return false;
+    return 1;
   }
 
   void* dir = gSystem->OpenDirectory(groupsDir);
   if (!dir)
   {
     std::cerr << "ERROR: cannot open group directory: " << groupsDir << '\n';
-    return false;
+    return 1;
   }
   std::vector<std::string> files;
   const std::regex groupName(R"(group_[0-9][0-9])");
@@ -47,7 +47,7 @@ bool merge_jetcharge_histograms(const char* groupsDir,
     {
       std::cerr << "ERROR: missing group histogram: " << path << '\n';
       gSystem->FreeDirectory(dir);
-      return false;
+      return 1;
     }
     files.push_back(path);
   }
@@ -58,7 +58,7 @@ bool merge_jetcharge_histograms(const char* groupsDir,
   {
     std::cerr << "ERROR: found " << files.size() << " groups, expected "
               << expectedGroups << '\n';
-    return false;
+    return 1;
   }
 
   const std::vector<std::string> names = {
@@ -78,7 +78,7 @@ bool merge_jetcharge_histograms(const char* groupsDir,
     if (input.IsZombie())
     {
       std::cerr << "ERROR: cannot read group file " << path << '\n';
-      return false;
+      return 1;
     }
 
     auto* recMode = dynamic_cast<TNamed*>(input.Get("jetcharge_reco_mode"));
@@ -92,7 +92,7 @@ bool merge_jetcharge_histograms(const char* groupsDir,
         events->GetVal() <= 0)
     {
       std::cerr << "ERROR: missing or bad group metadata in " << path << '\n';
-      return false;
+      return 1;
     }
     if (first)
     {
@@ -110,7 +110,7 @@ bool merge_jetcharge_histograms(const char* groupsDir,
     {
       std::cerr << "ERROR: reconstruction labels or plot cuts differ: "
                 << path << '\n';
-      return false;
+      return 1;
     }
     totalEvents += events->GetVal();
 
@@ -120,7 +120,7 @@ bool merge_jetcharge_histograms(const char* groupsDir,
       if (!hist)
       {
         std::cerr << "ERROR: missing histogram " << name << " in " << path << '\n';
-        return false;
+        return 1;
       }
       auto it = merged.find(name);
       if (it == merged.end())
@@ -129,7 +129,7 @@ bool merge_jetcharge_histograms(const char* groupsDir,
         if (!clone)
         {
           std::cerr << "ERROR: cannot clone histogram " << name << '\n';
-          return false;
+          return 1;
         }
         clone->SetDirectory(nullptr);
         merged.emplace(name, std::move(clone));
@@ -149,7 +149,7 @@ bool merge_jetcharge_histograms(const char* groupsDir,
         {
           std::cerr << "ERROR: incompatible histogram " << name << " in "
                     << path << '\n';
-          return false;
+          return 1;
         }
       }
     }
@@ -163,13 +163,13 @@ bool merge_jetcharge_histograms(const char* groupsDir,
     const auto dirName = output.substr(0, slash);
     if (gSystem->mkdir(dirName.c_str(), true) != 0 &&
         gSystem->AccessPathName(dirName.c_str()))
-      return false;
+      return 1;
   }
   TFile file(outputFile, "RECREATE");
   if (file.IsZombie())
   {
     std::cerr << "ERROR: cannot create merged file " << outputFile << '\n';
-    return false;
+    return 1;
   }
   for (const auto& name : names) merged.at(name)->Write();
   TNamed("jetcharge_reco_mode", mode.c_str()).Write();
@@ -181,5 +181,5 @@ bool merge_jetcharge_histograms(const char* groupsDir,
   file.Close();
   std::cout << "Merged " << files.size() << " groups, " << totalEvents
             << " event entries into " << outputFile << '\n';
-  return true;
+  return 0;
 }
