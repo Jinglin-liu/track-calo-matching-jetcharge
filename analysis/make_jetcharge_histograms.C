@@ -3,6 +3,7 @@
 // Typical call from analysis/:
 // root -l -b -q 'make_jetcharge_histograms.C("../root/trackcalomatch_5GeV_unsub_run79516/jet_charge_inputs_unsubtracted_00079516_*.root","plots_run79516/jetcharge_histograms.root",5.0,0.7)'
 //
+// Returns 0 on success, nonzero on error for ROOT batch-mode exit status.
 // Each call writes 13 histograms; no event-level TTree is copied.
 // Batch manifests must list one ROOT file path per line (blank/# skipped).
 // Use the same cuts and identical binning in every group before hadd.
@@ -28,7 +29,7 @@
 #include <string>
 #include <vector>
 
-bool make_jetcharge_histograms(const char* inputSpec,
+int make_jetcharge_histograms(const char* inputSpec,
                                const char* outputFile = "jetcharge_histograms.root",
                                double minChargeJetPt = 0.0,
                                double maxAbsEta = 0.7)
@@ -38,7 +39,7 @@ bool make_jetcharge_histograms(const char* inputSpec,
       !std::isfinite(maxAbsEta) || maxAbsEta <= 0.0)
   {
     std::cerr << "ERROR: invalid histogram-making arguments.\n";
-    return false;
+    return 1;
   }
 
   TChain chain("JetChargeInputTree");
@@ -52,7 +53,7 @@ bool make_jetcharge_histograms(const char* inputSpec,
     if (!list)
     {
       std::cerr << "ERROR: cannot open manifest: " << spec << '\n';
-      return false;
+      return 1;
     }
     std::set<std::string> unique;
     std::string line;
@@ -65,12 +66,12 @@ bool make_jetcharge_histograms(const char* inputSpec,
       if (!unique.insert(path).second)
       {
         std::cerr << "ERROR: duplicate path in manifest: " << path << '\n';
-        return false;
+        return 1;
       }
       if (gSystem->AccessPathName(path.c_str()))
       {
         std::cerr << "ERROR: missing ROOT input: " << path << '\n';
-        return false;
+        return 1;
       }
       if (firstInputPath.empty()) firstInputPath = path;
       nFiles += chain.Add(path.c_str());
@@ -84,7 +85,7 @@ bool make_jetcharge_histograms(const char* inputSpec,
   if (nFiles <= 0 || chain.LoadTree(0) < 0)
   {
     std::cerr << "ERROR: no readable JetChargeInputTree in input: " << spec << '\n';
-    return false;
+    return 1;
   }
   const char* requiredBranches[] = {
       "jet_pt", "jet_charge", "jet_eta", "jet_phi", "jet_mass",
@@ -94,7 +95,7 @@ bool make_jetcharge_histograms(const char* inputSpec,
     if (!chain.GetBranch(branch))
     {
       std::cerr << "ERROR: required branch '" << branch << "' not found.\n";
-      return false;
+      return 1;
     }
   }
 
@@ -107,10 +108,13 @@ bool make_jetcharge_histograms(const char* inputSpec,
         gSystem->AccessPathName(dir.c_str()))
     {
       std::cerr << "ERROR: cannot create output directory: " << dir << '\n';
-      return false;
+      return 1;
     }
   }
 
+  // Query total entries before attaching TTreeReader to avoid changing
+  // the chain's current tree behind the reader (SetEntryBase warning).
+  const Long64_t expectedEntries = chain.GetEntries();
   TH1::AddDirectory(kFALSE);
   TTreeReader reader(&chain);
   TTreeReaderValue<std::vector<float>> jetPt(reader, "jet_pt");
@@ -166,7 +170,7 @@ bool make_jetcharge_histograms(const char* inputSpec,
 
   std::cout << "Input: " << spec << '\n'
             << "Input files: " << nFiles << '\n'
-            << "Tree entries: " << chain.GetEntries() << '\n'
+            << "Tree entries: " << expectedEntries << '\n'
             << "Cuts: jet pT >= " << minChargeJetPt
             << ", |eta| < " << maxAbsEta << '\n';
 
@@ -235,18 +239,18 @@ bool make_jetcharge_histograms(const char* inputSpec,
   }
 
 
-  if (eventsRead != chain.GetEntries())
+  if (eventsRead != expectedEntries)
   {
     std::cerr << "ERROR: read " << eventsRead << " of "
-              << chain.GetEntries() << " expected entries; histogram not saved.\n";
-    return false;
+              << expectedEntries << " expected entries; histogram not saved.\n";
+    return 1;
   }
 
   TFile histFile(outputFile, "RECREATE");
   if (histFile.IsZombie())
   {
     std::cerr << "ERROR: cannot create histogram file: " << outputFile << '\n';
-    return false;
+    return 1;
   }
 
   hPtAll->Write(); hPtFid->Write(); hJetsPerEvent->Write();
@@ -277,5 +281,5 @@ bool make_jetcharge_histograms(const char* inputSpec,
             << "Histograms:                  " << outputFile << '\n'
             << "NOTE: only selected jet branches were read.\n"
             << "===========================================\n";
-  return true;
+  return 0;
 }
