@@ -25,60 +25,60 @@
 #include <memory>
 #include <string>
 
-bool draw_jetcharge_histograms(const char* histogramFile,
+int draw_jetcharge_histograms(const char* histogramFile,
                                 const char* outputDir = "jetcharge_plots")
 {
   if (!histogramFile || !*histogramFile || !outputDir || !*outputDir)
   {
     std::cerr << "ERROR: invalid input or output path.\n";
-    return false;
+    return 1;
   }
   TFile input(histogramFile, "READ");
   if (input.IsZombie())
   {
     std::cerr << "ERROR: cannot open histogram file: " << histogramFile << '\n';
-    return false;
+    return 1;
   }
 
   TH1D* hPtAll = nullptr;
   input.GetObject("hPtAll", hPtAll);
-  if (!hPtAll) { std::cerr << "ERROR: missing or incorrect hPtAll in " << histogramFile << '\n'; return false; }
+  if (!hPtAll) { std::cerr << "ERROR: missing or incorrect hPtAll in " << histogramFile << '\n'; return 1; }
   TH1D* hPtFid = nullptr;
   input.GetObject("hPtFid", hPtFid);
-  if (!hPtFid) { std::cerr << "ERROR: missing or incorrect hPtFid in " << histogramFile << '\n'; return false; }
+  if (!hPtFid) { std::cerr << "ERROR: missing or incorrect hPtFid in " << histogramFile << '\n'; return 1; }
   TH1D* hJetsPerEvent = nullptr;
   input.GetObject("hJetsPerEvent", hJetsPerEvent);
-  if (!hJetsPerEvent) { std::cerr << "ERROR: missing or incorrect hJetsPerEvent in " << histogramFile << '\n'; return false; }
+  if (!hJetsPerEvent) { std::cerr << "ERROR: missing or incorrect hJetsPerEvent in " << histogramFile << '\n'; return 1; }
   TH1D* hEta = nullptr;
   input.GetObject("hEta", hEta);
-  if (!hEta) { std::cerr << "ERROR: missing or incorrect hEta in " << histogramFile << '\n'; return false; }
+  if (!hEta) { std::cerr << "ERROR: missing or incorrect hEta in " << histogramFile << '\n'; return 1; }
   TH1D* hPhi = nullptr;
   input.GetObject("hPhi", hPhi);
-  if (!hPhi) { std::cerr << "ERROR: missing or incorrect hPhi in " << histogramFile << '\n'; return false; }
+  if (!hPhi) { std::cerr << "ERROR: missing or incorrect hPhi in " << histogramFile << '\n'; return 1; }
   TH1D* hMass = nullptr;
   input.GetObject("hMass", hMass);
-  if (!hMass) { std::cerr << "ERROR: missing or incorrect hMass in " << histogramFile << '\n'; return false; }
+  if (!hMass) { std::cerr << "ERROR: missing or incorrect hMass in " << histogramFile << '\n'; return 1; }
   TH1D* hChargeAll = nullptr;
   input.GetObject("hChargeAll", hChargeAll);
-  if (!hChargeAll) { std::cerr << "ERROR: missing or incorrect hChargeAll in " << histogramFile << '\n'; return false; }
+  if (!hChargeAll) { std::cerr << "ERROR: missing or incorrect hChargeAll in " << histogramFile << '\n'; return 1; }
   TH1D* hChargeMatched = nullptr;
   input.GetObject("hChargeMatched", hChargeMatched);
-  if (!hChargeMatched) { std::cerr << "ERROR: missing or incorrect hChargeMatched in " << histogramFile << '\n'; return false; }
+  if (!hChargeMatched) { std::cerr << "ERROR: missing or incorrect hChargeMatched in " << histogramFile << '\n'; return 1; }
   TH1D* hCharge2to5 = nullptr;
   input.GetObject("hCharge2to5", hCharge2to5);
-  if (!hCharge2to5) { std::cerr << "ERROR: missing or incorrect hCharge2to5 in " << histogramFile << '\n'; return false; }
+  if (!hCharge2to5) { std::cerr << "ERROR: missing or incorrect hCharge2to5 in " << histogramFile << '\n'; return 1; }
   TH1D* hCharge5to10 = nullptr;
   input.GetObject("hCharge5to10", hCharge5to10);
-  if (!hCharge5to10) { std::cerr << "ERROR: missing or incorrect hCharge5to10 in " << histogramFile << '\n'; return false; }
+  if (!hCharge5to10) { std::cerr << "ERROR: missing or incorrect hCharge5to10 in " << histogramFile << '\n'; return 1; }
   TH1D* hCharge10plus = nullptr;
   input.GetObject("hCharge10plus", hCharge10plus);
-  if (!hCharge10plus) { std::cerr << "ERROR: missing or incorrect hCharge10plus in " << histogramFile << '\n'; return false; }
+  if (!hCharge10plus) { std::cerr << "ERROR: missing or incorrect hCharge10plus in " << histogramFile << '\n'; return 1; }
   TH1D* hNMatched = nullptr;
   input.GetObject("hNMatched", hNMatched);
-  if (!hNMatched) { std::cerr << "ERROR: missing or incorrect hNMatched in " << histogramFile << '\n'; return false; }
+  if (!hNMatched) { std::cerr << "ERROR: missing or incorrect hNMatched in " << histogramFile << '\n'; return 1; }
   TH2D* hChargeVsPt = nullptr;
   input.GetObject("hChargeVsPt", hChargeVsPt);
-  if (!hChargeVsPt) { std::cerr << "ERROR: missing or incorrect hChargeVsPt in " << histogramFile << '\n'; return false; }
+  if (!hChargeVsPt) { std::cerr << "ERROR: missing or incorrect hChargeVsPt in " << histogramFile << '\n'; return 1; }
   JetChargePlots::JetPlotSource source = JetChargePlots::parseJetPlotSource(histogramFile);
   if (auto* mode = dynamic_cast<TNamed*>(input.Get("jetcharge_reco_mode")))
     source.mode = mode->GetTitle();
@@ -93,14 +93,14 @@ bool draw_jetcharge_histograms(const char* histogramFile,
   if (!std::isfinite(maxAbsEta) || maxAbsEta <= 0)
   {
     std::cerr << "ERROR: bad maxAbsEta histogram metadata.\n";
-    return false;
+    return 1;
   }
 
   if (gSystem->mkdir(outputDir, true) != 0 &&
       gSystem->AccessPathName(outputDir))
   {
     std::cerr << "ERROR: cannot create plot directory: " << outputDir << '\n';
-    return false;
+    return 1;
   }
 
   gStyle->SetOptStat(0);
@@ -239,5 +239,5 @@ bool draw_jetcharge_histograms(const char* histogramFile,
 
 
   std::cout << "Figures saved under " << outputDir << '\n';
-  return true;
+  return 0;
 }
