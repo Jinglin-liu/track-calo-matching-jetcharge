@@ -210,11 +210,11 @@ bool draw_jetcharge_histograms(const char* histogramFile,
 
   struct OutputCanvas { TCanvas* canvas; const char* name; };
   const OutputCanvas outputs[] = {
-      {cJetQA, "jet_qa"},
-      {cChargeQA, "jet_charge_qa"},
-      {cChargeSlices, "jet_charge_pt_slices"},
-      {cPt, "jet_pt_spectrum"},
-      {cMass, "jet_mass"}};
+      {cJetQA.get(), "jet_qa"},
+      {cChargeQA.get(), "jet_charge_qa"},
+      {cChargeSlices.get(), "jet_charge_pt_slices"},
+      {cPt.get(), "jet_pt_spectrum"},
+      {cMass.get(), "jet_mass"}};
 
   for (const auto& item : outputs)
   {
