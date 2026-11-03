@@ -20,6 +20,7 @@ input_dir=""
 output_dir=""
 groups=()
 force=false
+skip_existing=false
 
 usage() {
   cat <<'EOF'
@@ -32,6 +33,7 @@ Usage: bash analysis/make_jetcharge_groups.sh [options]
   --input-dir DIR   Override the original ROOT-file directory
   --output-dir DIR  Override output directory for manifests and group histograms
   --force           Replace previously created per-group histogram files
+  --skip-existing   Resume: skip nonempty per-group histogram files (verify cuts separately)
   -h, --help        Show this usage
 
 Defaults:
@@ -52,11 +54,16 @@ while (($#)); do
     --input-dir) (($# >= 2)) || exit 2; input_dir=$2; shift 2 ;;
     --output-dir) (($# >= 2)) || exit 2; output_dir=$2; shift 2 ;;
     --force) force=true; shift ;;
+    --skip-existing) skip_existing=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: unknown argument $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
+if [[ "$force" == true && "$skip_existing" == true ]]; then
+  echo "ERROR: --force and --skip-existing are mutually exclusive" >&2
+  exit 2
+fi
 [[ "$run" =~ ^[0-9]{5,8}$ ]] || { echo "ERROR: invalid run number" >&2; exit 2; }
 [[ "$mode" == unsubtracted || "$mode" == sub1 ]] || {
   echo "ERROR: mode must be unsubtracted or sub1" >&2; exit 2;
@@ -112,7 +119,11 @@ for list in "${selected[@]}"; do
   group_dir="$output_dir/groups/group_${group}"
   hist="$group_dir/jetcharge_histograms.root"
   if [[ -e "$hist" && "$force" == false ]]; then
-    echo "ERROR: $hist exists. Use --force to replace it." >&2
+    if [[ "$skip_existing" == true && -s "$hist" ]]; then
+      echo "Skipping existing group $group: $hist"
+      continue
+    fi
+    echo "ERROR: $hist exists. Use --force to replace, or --skip-existing to resume." >&2
     exit 1
   fi
   mkdir -p "$group_dir"
