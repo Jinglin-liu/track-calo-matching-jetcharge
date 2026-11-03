@@ -11,8 +11,9 @@ PeriodicHold          = (NumJobStarts>=1 && JobStatus == 1)
 getenv                = False
 should_transfer_files = NO
 
-# Production template: the submission driver overrides only the queue-from line
-# for each numbered file_run<run>_<NN>.list. Never point at *_test lists.
+# Production template: submission driver generates a temporary .job per group,
+# appends _run<run> to the base OutDir, and overrides the queue-from line.
+# Never point at *_test lists.
 # Resolve all paths relative to the submit directory (repository root).
 RepoDir               = /sphenix/user/jlnliu/projects/track-calo-matching/track-calo-matching-jetcharge
 initialdir            = $(RepoDir)
@@ -20,7 +21,7 @@ executable            = $(RepoDir)/scripts/runTrackCaloMatch.sh
 request_memory        = 6GB
 job_lease_duration    = 3600
 
-OutDir                = $(RepoDir)/root/trackcalomatch_5GeV_unsub_run79516
+OutDir                = $(RepoDir)/root/trackcalomatch_5GeV_unsub
 output                = $(RepoDir)/log/trackcalomatch_prod-$(Cluster)-$(Process).out
 error                 = $(RepoDir)/log/trackcalomatch_prod-$(Cluster)-$(Process).err
 log                   = /tmp/jlnliu/trackcalomatch_prod-$(Cluster)-$(Process).log
