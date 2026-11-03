@@ -11,7 +11,7 @@
 #include "make_jetcharge_histograms.C"
 #include "draw_jetcharge_histograms.C"
 
-void plot_jetcharge_tree(const char* filename,
+int plot_jetcharge_tree(const char* filename,
                          const char* outputDir = "jetcharge_plots",
                          double minChargeJetPt = 0.0,
                          double maxAbsEta = 0.7)
@@ -19,15 +19,19 @@ void plot_jetcharge_tree(const char* filename,
   if (!filename || !*filename || !outputDir || !*outputDir)
   {
     std::cerr << "ERROR: invalid filename/output directory.\n";
-    return;
+    return 1;
   }
   const std::string histPath = std::string(outputDir) + "/jetcharge_histograms.root";
   if (make_jetcharge_histograms(filename, histPath.c_str(),
                                 minChargeJetPt, maxAbsEta) != 0)
   {
     std::cerr << "ERROR: could not generate histograms; skipping drawing.\n";
-    return;
+    return 1;
   }
   if (draw_jetcharge_histograms(histPath.c_str(), outputDir) != 0)
+  {
     std::cerr << "ERROR: histogram generation succeeded but drawing failed.\n";
+    return 1;
+  }
+  return 0;
 }
