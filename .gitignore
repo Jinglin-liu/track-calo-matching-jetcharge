@@ -73,6 +73,8 @@ Testing/
 /log/
 /previous_analysis/
 analysis/figure/
+analysis/plots_run*/
+analysis/single_jetcharge_plots/
 *.log
 *.err
 
