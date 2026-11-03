@@ -177,6 +177,34 @@ filename labels**, not authoritative cut metadata inside the tree. Plotting
 cuts passed as the third and fourth arguments are independent of the
 reconstruction selections.
 
+## Large Run 79516 production plotting (TChain, no TTree merge)
+
+For the 37,824 individual Run 79516 output ROOT files, use the new
+`analysis/make_jetcharge_histograms.C` (TChain and manifest support),
+`analysis/merge_jetcharge_histograms.C` (merge 13 QA histograms only), and
+`analysis/draw_jetcharge_histograms.C` (draw from the tiny histogram file).
+The old `plot_jetcharge_tree.C` filename and arguments still work.
+
+**Detailed input/output paths, 38-group commands, error checks and
+single-file examples:**
+[README_JET_CHARGE_PLOTTING.md](README_JET_CHARGE_PLOTTING.md).
+
+From the repository root, process all 38 groups without merging TTrees:
+
+```bash
+bash analysis/make_jetcharge_groups.sh --run 79516
+```
+
+Then from `analysis/` merge and draw:
+
+```bash
+root -l -b -q 'merge_jetcharge_histograms.C("plots_run79516_unsubtracted/groups","plots_run79516_unsubtracted/run79516_histograms.root",38)'
+root -l -b -q 'draw_jetcharge_histograms.C("plots_run79516_unsubtracted/run79516_histograms.root","plots_run79516_unsubtracted/figures")'
+```
+
+The source `root/trackcalomatch_5GeV_unsub_run79516/*.root` files
+stay untouched and the generated group/merged histogram files are small.
+
 ## Production checks
 
 - Test a small event sample after environment or reconstruction changes.
