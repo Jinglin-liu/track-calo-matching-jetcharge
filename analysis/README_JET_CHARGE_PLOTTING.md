@@ -120,10 +120,18 @@ To rerun that group with the same output file, supply `--force`:
 bash analysis/make_jetcharge_groups.sh --run 79516 --group 00 --force
 ```
 
-Once you have processed group 00, run the main command **with `--force`**
-to regenerate all 38 groups, or call `--group 01` ... `--group 37`
-individually. The script deliberately refuses to overwrite an existing
-group histogram without `--force`, preventing accidental loss of results.
+Once you have processed group 00 (or if a full run was interrupted),
+**resume without recomputing the completed groups** using:
+
+```bash
+bash analysis/make_jetcharge_groups.sh --run 79516 --skip-existing
+```
+
+`--skip-existing` trusts any nonempty group histogram file already on
+disk, so only use it when the earlier groups used the same cuts and
+reconstruction input. The merge macro checks these settings across all
+groups. Alternatively use `--force` to regenerate every selected group.
+Without either flag the group script refuses to overwrite existing files.
 
 ### 3. Merge the 38 histogram files (not TTrees)
 
