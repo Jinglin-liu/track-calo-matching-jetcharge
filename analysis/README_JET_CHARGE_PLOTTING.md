@@ -127,6 +127,13 @@ Once you have processed group 00 (or if a full run was interrupted),
 bash analysis/make_jetcharge_groups.sh --run 79516 --skip-existing
 ```
 
+The histogram-making, merging, and drawing macros now return **integer status codes**
+(0 on success, nonzero on failure) so ROOT batch-mode execution works
+correctly with the script's `set -e`. Earlier versions returned `bool`,
+which could cause a successful `(bool) true` macro to stop the group script
+at group 00. After pulling the updated macros, resume with
+`--skip-existing` rather than rerunning completed groups.
+
 `--skip-existing` trusts any nonempty group histogram file already on
 disk, so only use it when the earlier groups used the same cuts and
 reconstruction input. The merge macro checks these settings across all
