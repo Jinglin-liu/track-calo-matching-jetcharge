@@ -177,6 +177,18 @@ int make_jetcharge_histograms(const char* inputSpec,
   while (reader.Next())
   {
     ++eventsRead;
+
+    if (eventsRead % 50000 == 0)
+    {
+    std::cout
+        << "Processed " << eventsRead
+        << " / " << expectedEntries
+        << " events ("
+        << 100.0 * eventsRead / expectedEntries
+        << "%), stored jets: " << jetsStored
+        << std::endl;
+    }
+
     hJetsPerEvent->Fill(*nJets);
     if (eventsRead == 1) observedKappa = *chargeKappa;
 

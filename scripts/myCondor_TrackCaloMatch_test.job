@@ -18,7 +18,7 @@ executable            = $(RepoDir)/scripts/runTrackCaloMatch.sh
 request_memory        = 6GB
 job_lease_duration    = 3600
 
-OutDir                = $(RepoDir)/root/trackcalomatch_5GeV_0.5tower_unsub_00000CaloJet
+OutDir                = $(RepoDir)/root/trackcalomatch_0GeV_unsub_test
 output                = $(RepoDir)/log/trackcalomatch_test-$(Cluster)-$(Process).out
 error                 = $(RepoDir)/log/trackcalomatch_test-$(Cluster)-$(Process).err
 log                   = /tmp/jlnliu/trackcalomatch_test-$(Cluster)-$(Process).log
@@ -27,8 +27,8 @@ log                   = /tmp/jlnliu/trackcalomatch_test-$(Cluster)-$(Process).lo
 # This is the 6th argument to runTrackCaloMatch.sh; 5th enables jet-charge output;
 # 7the argument switches TrackToCalo module; 8th is the tower pt cut.
 JetMode               = unsubtracted
-minTowerPt            = 0.5
+minTowerPt            = 0.0
 arguments             = $(events) $(file) $(OutDir) $(skip) true $(JetMode) false $(minTowerPt)
 
 # The input is a DST basename; the wrapper uses getinputfiles.pl to resolve it.
-queue events,file,skip from $(RepoDir)/fileLists/file_run79516_00_100Test.list
+queue events,file,skip from $(RepoDir)/fileLists/file_run79516_00.list
