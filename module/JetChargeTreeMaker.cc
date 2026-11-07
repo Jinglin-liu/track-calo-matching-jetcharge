@@ -1,5 +1,8 @@
 #include "JetChargeTreeMaker.h"
 
+#include <calobase/RawTowerDefs.h>
+#include <calobase/RawTowerGeom.h>
+#include <calobase/RawTowerGeomContainer.h>
 #include <calobase/TowerInfo.h>
 #include <calobase/TowerInfoContainer.h>
 #include <ffaobjects/EventHeader.h>
@@ -124,6 +127,8 @@ int JetChargeTreeMaker::Init(PHCompositeNode*)
   BRANCH("jet_component_source", m_jetComponentSource);
   BRANCH("jet_component_id", m_jetComponentId);
   BRANCH("jet_component_energy", m_jetComponentEnergy);
+  BRANCH("jet_component_eta", m_jetComponentEta);
+  BRANCH("jet_component_phi", m_jetComponentPhi);
   BRANCH("jet_component_ieta", m_jetComponentIEta);
   BRANCH("jet_component_iphi", m_jetComponentIPhi);
 #undef BRANCH
@@ -155,7 +160,8 @@ void JetChargeTreeMaker::resetBranches()
   CLEAR(m_jetNMatchedTracks); CLEAR(m_jetMatchedTrackPtSum);
   CLEAR(m_jetTrackOffset); CLEAR(m_jetTrackIndex); CLEAR(m_jetTrackDeltaR);
   CLEAR(m_jetComponentOffset); CLEAR(m_jetComponentSource); CLEAR(m_jetComponentId);
-  CLEAR(m_jetComponentEnergy); CLEAR(m_jetComponentIEta); CLEAR(m_jetComponentIPhi);
+  CLEAR(m_jetComponentEnergy); CLEAR(m_jetComponentEta); CLEAR(m_jetComponentPhi);
+  CLEAR(m_jetComponentIEta); CLEAR(m_jetComponentIPhi);
 #undef CLEAR
 }
 
@@ -245,6 +251,35 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
     return Fun4AllReturnCodes::ABORTRUN;
   }
 
+  // Match the geometry and vertex correction applied by sPHENIX TowerJetInput.
+  // Retowered CEMC has IHCal angular segmentation but uses the EMCal radius.
+  auto* geomEM = findNode::getClass<RawTowerGeomContainer>(topNode, "TOWERGEOM_CEMC");
+  auto* geomIH = findNode::getClass<RawTowerGeomContainer>(topNode, "TOWERGEOM_HCALIN");
+  auto* geomOH = findNode::getClass<RawTowerGeomContainer>(topNode, "TOWERGEOM_HCALOUT");
+  if (!geomEM || !geomIH || !geomOH)
+  {
+    std::cerr << Name() << ": missing calorimeter geometry for jet constituents\n";
+    return Fun4AllReturnCodes::ABORTRUN;
+  }
+  const auto emKey = RawTowerDefs::encode_towerid(
+      RawTowerDefs::CalorimeterId::CEMC, 0, 0);
+  auto* emRefGeom = geomEM->get_tower_geometry(emKey);
+  if (!emRefGeom)
+  {
+    std::cerr << Name() << ": missing EMCal reference geometry\n";
+    return Fun4AllReturnCodes::ABORTRUN;
+  }
+  const double emRadius = emRefGeom->get_center_radius();
+
+  // JetReco stores the vertex actually used by TowerJetInput. Fall back to
+  // GlobalVertexMap (or z=0) for older jet-container implementations.
+  double jetVertexZ = jets->get_vertex_z();
+  if (!std::isfinite(jetVertexZ))
+  {
+    jetVertexZ = (std::isfinite(m_vertexZ) && std::abs(m_vertexZ) <= 1000.f)
+        ? static_cast<double>(m_vertexZ) : 0.0;
+  }
+
   m_jetComponentOffset.push_back(0);
   for (auto* jet : *jets)
   {
@@ -293,6 +328,8 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
         default: break;
       }
       float energy = std::numeric_limits<float>::quiet_NaN();
+      float eta = std::numeric_limits<float>::quiet_NaN();
+      float phi = std::numeric_limits<float>::quiet_NaN();
       int ieta = -1;
       int iphi = -1;
       if (towers)
@@ -305,9 +342,40 @@ int JetChargeTreeMaker::process_event(PHCompositeNode* topNode)
           const auto key = towers->encode_key(channel);
           ieta = towers->getTowerEtaBin(key);
           iphi = towers->getTowerPhiBin(key);
+
+          const bool isRetoweredEM =
+              component.first == Jet::CEMC_TOWERINFO_RETOWER ||
+              component.first == Jet::CEMC_TOWERINFO_SUB1;
+          const bool isOH =
+              component.first == Jet::HCALOUT_TOWERINFO ||
+              component.first == Jet::HCALOUT_TOWERINFO_SUB1;
+          // Retowered EMCal is indexed in IHCal tower geometry.
+          auto* geometry = isOH ? geomOH : geomIH;
+          const auto caloId = isOH
+              ? RawTowerDefs::CalorimeterId::HCALOUT
+              : RawTowerDefs::CalorimeterId::HCALIN;
+          const auto geomKey = RawTowerDefs::encode_towerid(
+              caloId, ieta, iphi);
+          auto* towerGeom = geometry->get_tower_geometry(geomKey);
+          if (towerGeom)
+          {
+            const double r = isRetoweredEM
+                ? emRadius : towerGeom->get_center_radius();
+            if (std::isfinite(r) && r > 0.)
+            {
+              const double z0 = std::sinh(towerGeom->get_eta()) * r;
+              eta = static_cast<float>(
+                  std::asinh((z0 - jetVertexZ) / r));
+              phi = static_cast<float>(
+                  std::atan2(towerGeom->get_center_y(),
+                             towerGeom->get_center_x()));
+            }
+          }
         }
       }
       m_jetComponentEnergy.push_back(energy);
+      m_jetComponentEta.push_back(eta);
+      m_jetComponentPhi.push_back(phi);
       m_jetComponentIEta.push_back(ieta);
       m_jetComponentIPhi.push_back(iphi);
     }
