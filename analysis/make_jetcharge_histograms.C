@@ -1,10 +1,10 @@
 // Read JetChargeInputTree from a single ROOT file, wildcard, or line-delimited
-// text manifest of ROOT paths. Only plot-level jet branches are read.
+// text manifest of ROOT paths. Reads jet kinematics and accepted-jet tower constituents.
 // Typical call from analysis/:
 // root -l -b -q 'make_jetcharge_histograms.C("../root/trackcalomatch_5GeV_unsub_run79516/jet_charge_inputs_unsubtracted_00079516_*.root","plots_run79516/jetcharge_histograms.root",5.0,0.7)'
 //
 // Returns 0 on success, nonzero on error for ROOT batch-mode exit status.
-// Each call writes 13 histograms; no event-level TTree is copied.
+// Each call writes 26 histograms; no event-level TTree is copied.
 // Batch manifests must list one ROOT file path per line (blank/# skipped).
 // Use the same cuts and identical binning in every group before hadd.
 
@@ -21,6 +21,7 @@
 #include <TTreeReaderValue.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -89,7 +90,9 @@ int make_jetcharge_histograms(const char* inputSpec,
   }
   const char* requiredBranches[] = {
       "jet_pt", "jet_charge", "jet_eta", "jet_phi", "jet_mass",
-      "jet_n_matched_tracks", "n_jets", "jet_charge_kappa"};
+      "jet_n_matched_tracks", "n_jets", "jet_charge_kappa",
+      "jet_component_offset", "jet_component_source", "jet_component_energy",
+      "jet_component_eta", "jet_component_phi"};
   for (const char* branch : requiredBranches)
   {
     if (!chain.GetBranch(branch))
@@ -125,6 +128,11 @@ int make_jetcharge_histograms(const char* inputSpec,
   TTreeReaderValue<std::vector<int>> nMatched(reader, "jet_n_matched_tracks");
   TTreeReaderValue<Int_t> nJets(reader, "n_jets");
   TTreeReaderValue<Float_t> chargeKappa(reader, "jet_charge_kappa");
+  TTreeReaderValue<std::vector<unsigned int>> componentOffset(reader, "jet_component_offset");
+  TTreeReaderValue<std::vector<int>> componentSource(reader, "jet_component_source");
+  TTreeReaderValue<std::vector<float>> componentEnergy(reader, "jet_component_energy");
+  TTreeReaderValue<std::vector<float>> componentEta(reader, "jet_component_eta");
+  TTreeReaderValue<std::vector<float>> componentPhi(reader, "jet_component_phi");
 
   const JetChargePlots::JetPlotSource source = JetChargePlots::parseJetPlotSource(
       firstInputPath.empty() ? spec : firstInputPath);
@@ -158,6 +166,39 @@ int make_jetcharge_histograms(const char* inputSpec,
       "hChargeVsPt", "Jet charge vs p_{T} (matched jets);Jet p_{T} [GeV/c];Q^{#kappa}",
       100, 0, 30, 120, -4, 4);
 
+  // Tower maps include only constituents belonging to jets passing the same
+  // pT/eta selection as hEta/hPhi. One tower may appear in different jets/events.
+  // Bin ranges cover the calorimeter acceptance, not just the jet-axis cut.
+  constexpr double pi = 3.14159265358979323846;
+  auto hJetEtaPhi = std::make_unique<TH2D>(
+      "hJetEtaPhi", "Selected jet axes;Jet #eta;Jet #phi [rad]",
+      96, -1.2, 1.2, 72, -pi, pi);
+  const std::array<std::string, 3> caloSuffix = {{"Cemc", "Ihcal", "Ohcal"}};
+  const std::array<std::string, 3> caloTitle = {{"Retowered EMCal", "IHCal", "OHCal"}};
+  std::array<std::unique_ptr<TH1D>, 3> hTowerEta;
+  std::array<std::unique_ptr<TH1D>, 3> hTowerPhi;
+  std::array<std::unique_ptr<TH2D>, 3> hTowerEtaPhi;
+  std::array<std::unique_ptr<TH2D>, 3> hTowerEtaPhiEnergy;
+  for (std::size_t i = 0; i < caloSuffix.size(); ++i)
+  {
+    hTowerEta[i] = std::make_unique<TH1D>(
+        ("hTowerEta" + caloSuffix[i]).c_str(),
+        (caloTitle[i] + " jet-constituent tower #eta;Tower #eta;Constituents").c_str(),
+        96, -1.2, 1.2);
+    hTowerPhi[i] = std::make_unique<TH1D>(
+        ("hTowerPhi" + caloSuffix[i]).c_str(),
+        (caloTitle[i] + " jet-constituent tower #phi;Tower #phi [rad];Constituents").c_str(),
+        72, -pi, pi);
+    hTowerEtaPhi[i] = std::make_unique<TH2D>(
+        ("hTowerEtaPhi" + caloSuffix[i]).c_str(),
+        (caloTitle[i] + " jet-constituent occupancy;Tower #eta;Tower #phi [rad]").c_str(),
+        96, -1.2, 1.2, 72, -pi, pi);
+    hTowerEtaPhiEnergy[i] = std::make_unique<TH2D>(
+        ("hTowerEtaPhiEnergy" + caloSuffix[i]).c_str(),
+        (caloTitle[i] + " constituent energy sum [GeV];Tower #eta;Tower #phi [rad]").c_str(),
+        96, -1.2, 1.2, 72, -pi, pi);
+  }
+
   Long64_t eventsRead = 0;
   Long64_t jetsStored = 0;
   Long64_t jetsForCharge = 0;
@@ -165,6 +206,9 @@ int make_jetcharge_histograms(const char* inputSpec,
   Long64_t jetsNonfinitePt = 0;
   Long64_t jetsNonfiniteCharge = 0;
   Long64_t mismatchedVectorEvents = 0;
+  Long64_t towerConstituentsSelected[3] = {0, 0, 0};
+  Long64_t towerConstituentsInvalidGeometry = 0;
+  Long64_t towerConstituentsUnknownSource = 0;
   Float_t observedKappa = -1.0f;
 
 
@@ -209,6 +253,22 @@ int make_jetcharge_histograms(const char* inputSpec,
     const std::size_t nCommon = std::min({jetPt->size(), jetCharge->size(),
         jetEta->size(), jetPhi->size(), jetMass->size(), nMatched->size()});
 
+    // The flattened arrays must align with the jet-by-jet offsets.
+    const std::size_t nComponents = componentSource->size();
+    const bool aligned =
+        componentOffset->size() == n + 1 &&
+        componentEnergy->size() == nComponents &&
+        componentEta->size() == nComponents &&
+        componentPhi->size() == nComponents;
+    if (!aligned || componentOffset->front() != 0 ||
+        componentOffset->back() != nComponents ||
+        !std::is_sorted(componentOffset->begin(), componentOffset->end()))
+    {
+      std::cerr << "ERROR: malformed jet constituent arrays at tree entry "
+                << (eventsRead - 1) << "; aborting to avoid incomplete tower QA.\n";
+      return 1;
+    }
+
     for (std::size_t j = 0; j < nCommon; ++j)
     {
       const double pt = jetPt->at(j);
@@ -229,9 +289,52 @@ int make_jetcharge_histograms(const char* inputSpec,
       ++jetsForCharge;
 
       hEta->Fill(eta);
-      if (std::isfinite(jetPhi->at(j))) hPhi->Fill(jetPhi->at(j));
+      if (std::isfinite(jetPhi->at(j)))
+      {
+        hPhi->Fill(jetPhi->at(j));
+        hJetEtaPhi->Fill(eta, jetPhi->at(j));
+      }
       if (std::isfinite(jetMass->at(j))) hMass->Fill(jetMass->at(j));
       hNMatched->Fill(matched);
+
+      for (std::size_t c = componentOffset->at(j);
+           c < componentOffset->at(j + 1); ++c)
+      {
+        // Jet::SRC numeric values in sPHENIX jetbase/Jet.h.
+        // TowerInfo inputs: unsubtracted 28/26/27, Sub1 29/30/31.
+        int layer = -1;
+        switch (componentSource->at(c))
+        {
+          case 28: case 29: layer = 0; break;  // Retowered CEMC
+          case 26: case 30: layer = 1; break;  // IHCal
+          case 27: case 31: layer = 2; break;  // OHCal
+          default: break;
+        }
+        if (layer < 0)
+        {
+          if (++towerConstituentsUnknownSource <= 5)
+            std::cerr << "WARNING: unexpected constituent source "
+                      << componentSource->at(c) << " at event "
+                      << (eventsRead - 1) << '\n';
+          continue;
+        }
+
+        const double towerEta = componentEta->at(c);
+        const double towerPhi = componentPhi->at(c);
+        if (!std::isfinite(towerEta) || !std::isfinite(towerPhi))
+        {
+          ++towerConstituentsInvalidGeometry;
+          continue;
+        }
+        ++towerConstituentsSelected[layer];
+        hTowerEta[layer]->Fill(towerEta);
+        hTowerPhi[layer]->Fill(towerPhi);
+        hTowerEtaPhi[layer]->Fill(towerEta, towerPhi);
+
+        const double energy = componentEnergy->at(c);
+        if (std::isfinite(energy))
+          hTowerEtaPhiEnergy[layer]->Fill(towerEta, towerPhi, energy);
+      }
 
       if (!std::isfinite(charge))
       {
@@ -270,6 +373,14 @@ int make_jetcharge_histograms(const char* inputSpec,
   hChargeAll->Write(); hChargeMatched->Write();
   hCharge2to5->Write(); hCharge5to10->Write(); hCharge10plus->Write();
   hNMatched->Write(); hChargeVsPt->Write();
+  hJetEtaPhi->Write();
+  for (std::size_t layer = 0; layer < caloSuffix.size(); ++layer)
+  {
+    hTowerEta[layer]->Write();
+    hTowerPhi[layer]->Write();
+    hTowerEtaPhi[layer]->Write();
+    hTowerEtaPhiEnergy[layer]->Write();
+  }
 
   // Informational annotations; the original production configuration is
   // not inferred from event data. The plotting selections are authoritative.
@@ -290,8 +401,16 @@ int make_jetcharge_histograms(const char* inputSpec,
             << "Selected jets with >=1 track: " << jetsMatched << '\n'
             << "Selected jets with bad charge: " << jetsNonfiniteCharge << '\n'
             << "Events with vector mismatch: " << mismatchedVectorEvents << '\n'
+            << "Selected CEMC/IHCal/OHCal constituents: "
+            << towerConstituentsSelected[0] << " / "
+            << towerConstituentsSelected[1] << " / "
+            << towerConstituentsSelected[2] << '\n'
+            << "Constituents with invalid geometry: "
+            << towerConstituentsInvalidGeometry << '\n'
+            << "Constituents with unexpected source: "
+            << towerConstituentsUnknownSource << '\n'
             << "Histograms:                  " << outputFile << '\n'
-            << "NOTE: only selected jet branches were read.\n"
+            << "NOTE: tower QA uses constituents of pT/eta-selected jets only.\n"
             << "===========================================\n";
   return 0;
 }
