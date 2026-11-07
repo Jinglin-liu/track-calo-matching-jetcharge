@@ -91,6 +91,8 @@ class JetChargeTreeMaker : public SubsysReco
   std::vector<unsigned int> m_jetComponentOffset, m_jetComponentId;
   std::vector<int> m_jetComponentSource, m_jetComponentIEta, m_jetComponentIPhi;
   std::vector<float> m_jetComponentEnergy;
+  // Vertex-corrected directions of tower constituents used in jet reconstruction.
+  std::vector<float> m_jetComponentEta, m_jetComponentPhi;
 };
 
 #endif  // JETCHARGETREEMAKER_H
