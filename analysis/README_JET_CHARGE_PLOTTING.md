@@ -1,7 +1,7 @@
 # Jet-charge QA plotting for Run 79516: no large TTree hadd needed
 
 This workflow reads the production `JetChargeInputTree` files with ROOT `TChain`
-and stores **13 small histograms**, not a copy of the original event TTrees.
+and stores **26 small histograms**, not a copy of the original event TTrees.
 `make_jetcharge_histograms.C` fills histograms; `draw_jetcharge_histograms.C`
 draws PNG/PDF figures from a histogram file; `plot_jetcharge_tree.C` remains
 a one-command compatibility wrapper.
@@ -57,7 +57,7 @@ analysis/plots_run79516_unsubtracted/
         ...
         group_37.txt
     groups/
-        group_00/jetcharge_histograms.root   # 13 histograms + metadata
+        group_00/jetcharge_histograms.root   # 26 histograms + metadata
         ...
         group_37/jetcharge_histograms.root
     run79516_histograms.root                 # combined histograms
@@ -104,8 +104,9 @@ and saves exactly one histogram ROOT file in
 
 This can take time: every selected event must still be read, but only the
 needed branches (jet_pt, jet_eta, jet_phi, jet_mass, jet_charge,
-jet_n_matched_tracks, n_jets and jet_charge_kappa) are accessed. The large
-`jet_component_*` arrays are not read.
+jet_n_matched_tracks, n_jets and jet_charge_kappa) are accessed. The `jet_component_offset`, `jet_component_source`, `jet_component_energy`,
+`jet_component_eta`, and `jet_component_phi` branches are read in addition to
+jet kinematics. These branches must exist in every input file.
 
 For a one-group test, *before processing the full set*:
 
@@ -150,9 +151,9 @@ root -l -b -q 'merge_jetcharge_histograms.C("plots_run79516_unsubtracted/groups"
 ```
 
 This validates the presence of **38 distinct group directories**, the
-13 histograms' ROOT class/binning, jet mode labels, plotting cuts, and
+26 histograms' ROOT class/binning, jet mode labels, plotting cuts, and
 metadata before summing their bin contents. It saves a small combined ROOT
-file containing only the 13 histograms plus annotation and cut metadata.
+file containing only the 26 histograms plus annotation and cut metadata.
 Unlike raw `hadd`, it does **not accidentally sum per-group cut settings**.
 
 Check the result:
@@ -182,7 +183,7 @@ Still in `analysis/`:
 root -l -b -q 'draw_jetcharge_histograms.C("plots_run79516_unsubtracted/run79516_histograms.root","plots_run79516_unsubtracted/figures")'
 ```
 
-All five figures include the standard `AnalysisUtils::makeSphenixTag()`
+The five original figures include the standard `AnalysisUtils::makeSphenixTag()`
 annotation (`sPHENIX Internal`, `p+p`, `sqrt(s) = 200 GeV`). The label is
 applied only by the drawer; changing it does not alter any histogram contents.
 
@@ -211,7 +212,7 @@ root -l -b -q 'plot_jetcharge_tree.C("../root/trackcalomatch_5GeV_unsub_run79516
 ```
 
 This writes `analysis/single_jetcharge_plots/jetcharge_histograms.root`
-and five PNG/PDF figure pairs in the same directory.
+and 12 PNG/PDF figure pairs in the same directory.
 
 ### Make + draw from all files in one pass (no groups)
 
@@ -222,7 +223,7 @@ root -l -b -q 'plot_jetcharge_tree.C("../root/trackcalomatch_5GeV_unsub_run79516
 ```
 
 This `TChain` approach creates only
-`analysis/plots_run79516_all/jetcharge_histograms.root` and five PNG/PDF
+`analysis/plots_run79516_all/jetcharge_histograms.root` and 12 PNG/PDF
 figure pairs. It reads all 37,824 input ROOT files each time you run it,
 so the grouped option is usually more manageable.
 
@@ -274,3 +275,53 @@ with single quotes in the shell, preventing shell expansion of `*`.
 - The new group workflow is plotting-only. It does not change the
   reconstruction macro, Condor submission script, ROOT output files,
   event matching, or jet-charge calculation.
+
+## Jet-constituent calorimeter geometry QA (feature branch)
+
+The new geometry-enabled `JetChargeInputTree` is required. Old production
+ROOT files without `jet_component_eta` and `jet_component_phi` cannot
+produce these histograms. Regenerate the histograms from the new TTree files;
+old small histogram ROOT files also lack the new plots.
+
+The histogram maker produces **26 histograms** in total: 13 original jet-charge
+and jet-kinematics histograms, one selected-jet `hJetEtaPhi`, and for each of
+retowered EMCal, IHCal, OHCal four constituent histograms:
+`hTowerEta<Layer>`, `hTowerPhi<Layer>`, `hTowerEtaPhi<Layer>`, and
+`hTowerEtaPhiEnergy<Layer>`. Layer suffixes are `Cemc`, `Ihcal`, `Ohcal`.
+The energy-weighted maps sum constituent energies in GeV (signed for Sub1),
+not counts. Source IDs are 28/26/27 for unsubtracted and 29/30/31 for Sub1.
+
+**Selection:** only constituents of jets satisfying both
+`jet_pt >= minChargeJetPt` and `abs(jet_eta) < maxAbsEta` are included.
+The tower coordinates themselves are **not** restricted to `abs(eta)<maxAbsEta`.
+These are jet-constituent maps, not all-detector tower maps. All previous jet
+histograms retain their selections. The maker checks flattened constituent
+array lengths and offsets and fails on malformed entries.
+
+The drawer additionally saves the following PNG/PDF pairs:
+
+```text
+jet_eta_phi
+tower_geometry_1d_Cemc    tower_eta_phi_Cemc
+tower_geometry_1d_Ihcal   tower_eta_phi_Ihcal
+tower_geometry_1d_Ohcal   tower_eta_phi_Ohcal
+```
+
+Each `tower_geometry_1d_*` figure has eta and phi panels; each
+`tower_eta_phi_*` figure shows occupancy and energy-weighted 2D maps.
+The existing five figures remain unchanged.
+
+### Quick test before group processing
+
+From the repository root after checking out the feature branch:
+
+```bash
+cd analysis
+root -l -b -q 'plot_jetcharge_tree.C("../root/YOUR_NEW_PRODUCTION_DIR/jet_charge_inputs_unsubtracted_00079516_00000_00000.root","plots_tower_qa_test",5.0,0.7)'
+```
+
+Replace `YOUR_NEW_PRODUCTION_DIR` with the path containing the newly
+produced, geometry-enabled TTree. After the test, use the same group script
+with explicit `--input-dir` and a fresh `--output-dir` to avoid mixing old
+13-histogram and new 26-histogram files. Re-run group histogram creation,
+then merge, then draw; the drawer alone cannot reconstruct missing plots.
