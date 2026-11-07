@@ -20,6 +20,7 @@
 #include <TSystem.h>
 #include <TPad.h>
 
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <memory>
@@ -79,6 +80,33 @@ int draw_jetcharge_histograms(const char* histogramFile,
   TH2D* hChargeVsPt = nullptr;
   input.GetObject("hChargeVsPt", hChargeVsPt);
   if (!hChargeVsPt) { std::cerr << "ERROR: missing or incorrect hChargeVsPt in " << histogramFile << '\n'; return 1; }
+  // New constituent-geometry histograms (the maker requires geometry branches).
+  TH2D* hJetEtaPhi = nullptr;
+  input.GetObject("hJetEtaPhi", hJetEtaPhi);
+  if (!hJetEtaPhi)
+  {
+    std::cerr << "ERROR: missing hJetEtaPhi. Rebuild histograms from geometry-enabled TTrees.\n";
+    return 1;
+  }
+  const std::array<std::string, 3> caloSuffix = {{"Cemc", "Ihcal", "Ohcal"}};
+  const std::array<std::string, 3> caloTitle = {{"Retowered EMCal", "IHCal", "OHCal"}};
+  std::array<TH1D*, 3> hTowerEta{};
+  std::array<TH1D*, 3> hTowerPhi{};
+  std::array<TH2D*, 3> hTowerEtaPhi{};
+  std::array<TH2D*, 3> hTowerEtaPhiEnergy{};
+  for (std::size_t i = 0; i < caloSuffix.size(); ++i)
+  {
+    input.GetObject(("hTowerEta" + caloSuffix[i]).c_str(), hTowerEta[i]);
+    input.GetObject(("hTowerPhi" + caloSuffix[i]).c_str(), hTowerPhi[i]);
+    input.GetObject(("hTowerEtaPhi" + caloSuffix[i]).c_str(), hTowerEtaPhi[i]);
+    input.GetObject(("hTowerEtaPhiEnergy" + caloSuffix[i]).c_str(), hTowerEtaPhiEnergy[i]);
+    if (!hTowerEta[i] || !hTowerPhi[i] || !hTowerEtaPhi[i] || !hTowerEtaPhiEnergy[i])
+    {
+      std::cerr << "ERROR: missing constituent tower QA histograms for "
+                << caloTitle[i] << "; regenerate histogram ROOT file.\n";
+      return 1;
+    }
+  }
   JetChargePlots::JetPlotSource source = JetChargePlots::parseJetPlotSource(histogramFile);
   if (auto* mode = dynamic_cast<TNamed*>(input.Get("jetcharge_reco_mode")))
     source.mode = mode->GetTitle();
@@ -221,6 +249,53 @@ int draw_jetcharge_histograms(const char* histogramFile,
   plot1d(hMass, kBlue + 1, true);
   auto tagMass = AnalysisUtils::makeSphenixTag(0.52, 0.77, 0.91, 0.92);
   tagMass->Draw();
+
+  // One 2x2 1D eta/phi QA canvas per calorimeter and a 3-panel
+  // eta-phi occupancy/energy diagnostic. Axes are physical, vertex-corrected.
+  std::array<std::unique_ptr<TCanvas>, 3> cTowerGeometry;
+  std::array<std::unique_ptr<TCanvas>, 3> cTowerMaps;
+  for (std::size_t i = 0; i < caloSuffix.size(); ++i)
+  {
+    cTowerGeometry[i] = std::make_unique<TCanvas>(
+        ("cTowerGeometry" + caloSuffix[i]).c_str(),
+        (caloTitle[i] + " constituent tower geometry").c_str(), 1200, 500);
+    cTowerGeometry[i]->Divide(2, 1);
+    cTowerGeometry[i]->cd(1);
+    plot1d(hTowerEta[i], kBlue + 1);
+    cTowerGeometry[i]->cd(2);
+    plot1d(hTowerPhi[i], kRed + 1);
+
+    cTowerMaps[i] = std::make_unique<TCanvas>(
+        ("cTowerMaps" + caloSuffix[i]).c_str(),
+        (caloTitle[i] + " constituent eta-phi maps").c_str(), 1300, 550);
+    cTowerMaps[i]->Divide(2, 1);
+    cTowerMaps[i]->cd(1);
+    gPad->SetRightMargin(0.17);
+    gPad->SetLogz(false);
+    hTowerEtaPhi[i]->Draw("COLZ");
+    cTowerMaps[i]->cd(2);
+    gPad->SetRightMargin(0.17);
+    gPad->SetLogz(false);
+    hTowerEtaPhiEnergy[i]->Draw("COLZ");
+
+    for (const auto& output : std::array<std::pair<TCanvas*, std::string>, 2>{{
+             {cTowerGeometry[i].get(), "tower_geometry_1d_" + caloSuffix[i]},
+             {cTowerMaps[i].get(), "tower_eta_phi_" + caloSuffix[i]}}})
+    {
+      const std::string path = std::string(outputDir) + "/" + output.second;
+      output.first->SaveAs((path + ".png").c_str());
+      output.first->SaveAs((path + ".pdf").c_str());
+    }
+  }
+
+  auto cJetEtaPhi = std::make_unique<TCanvas>(
+      "cJetEtaPhi", "Selected jet eta-phi occupancy", 950, 720);
+  cJetEtaPhi->cd();
+  gPad->SetRightMargin(0.16);
+  hJetEtaPhi->Draw("COLZ");
+  const std::string jetMapPath = std::string(outputDir) + "/jet_eta_phi";
+  cJetEtaPhi->SaveAs((jetMapPath + ".png").c_str());
+  cJetEtaPhi->SaveAs((jetMapPath + ".pdf").c_str());
 
   struct OutputCanvas { TCanvas* canvas; const char* name; };
   const OutputCanvas outputs[] = {
