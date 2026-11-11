@@ -4,7 +4,7 @@
 // root -l -b -q 'make_jetcharge_histograms.C("../root/trackcalomatch_5GeV_unsub_run79516/jet_charge_inputs_unsubtracted_00079516_*.root","plots_run79516/jetcharge_histograms.root",5.0,0.7)'
 //
 // Returns 0 on success, nonzero on error for ROOT batch-mode exit status.
-// Each call writes 26 histograms; no event-level TTree is copied.
+// Each call writes 30 histograms; no event-level TTree is copied.
 // Batch manifests must list one ROOT file path per line (blank/# skipped).
 // Use the same cuts and identical binning in every group before hadd.
 
@@ -90,6 +90,8 @@ int make_jetcharge_histograms(const char* inputSpec,
   }
   const char* requiredBranches[] = {
       "jet_pt", "jet_charge", "jet_eta", "jet_phi", "jet_mass",
+      "track_pt", "track_charge", "n_tracks",
+      "jet_track_offset", "jet_track_delta_r",
       "jet_n_matched_tracks", "n_jets", "jet_charge_kappa",
       "jet_component_offset", "jet_component_source", "jet_component_energy",
       "jet_component_eta", "jet_component_phi"};
@@ -120,6 +122,11 @@ int make_jetcharge_histograms(const char* inputSpec,
   const Long64_t expectedEntries = chain.GetEntries();
   TH1::AddDirectory(kFALSE);
   TTreeReader reader(&chain);
+  TTreeReaderValue<std::vector<float>> trackPt(reader, "track_pt");
+  TTreeReaderValue<std::vector<int>> trackCharge(reader, "track_charge");
+  TTreeReaderValue<Int_t> nTracks(reader, "n_tracks");
+  TTreeReaderValue<std::vector<unsigned int>> trackMatchOffset(reader, "jet_track_offset");
+  TTreeReaderValue<std::vector<float>> trackMatchDeltaR(reader, "jet_track_delta_r");
   TTreeReaderValue<std::vector<float>> jetPt(reader, "jet_pt");
   TTreeReaderValue<std::vector<float>> jetCharge(reader, "jet_charge");
   TTreeReaderValue<std::vector<float>> jetEta(reader, "jet_eta");
@@ -158,13 +165,31 @@ int make_jetcharge_histograms(const char* inputSpec,
       "hCharge2to5", "2 #leq jet p_{T} < 5 GeV/c;Q^{#kappa};Jets", 160, -4, 4);
   auto hCharge5to10 = std::make_unique<TH1D>(
       "hCharge5to10", "5 #leq jet p_{T} < 10 GeV/c;Q^{#kappa};Jets", 160, -4, 4);
-  auto hCharge10plus = std::make_unique<TH1D>(
-      "hCharge10plus", "jet p_{T} #geq 10 GeV/c;Q^{#kappa};Jets", 160, -4, 4);
+  auto hCharge10to15 = std::make_unique<TH1D>(
+      "hCharge10to15", "10 #leq jet p_{T} < 15 GeV/c;Q^{#kappa};Jets", 160, -4, 4);
+  auto hCharge15plus = std::make_unique<TH1D>(
+      "hCharge15plus", "jet p_{T} #geq 15 GeV/c;Q^{#kappa};Jets", 160, -4, 4);
   auto hNMatched = std::make_unique<TH1D>(
       "hNMatched", "Track-to-jet matching;Matched tracks per jet;Jets", 21, -0.5, 20.5);
   auto hChargeVsPt = std::make_unique<TH2D>(
       "hChargeVsPt", "Jet charge vs p_{T} (matched jets);Jet p_{T} [GeV/c];Q^{#kappa}",
       100, 0, 30, 120, -4, 4);
+
+  // Event-level selected-track QA: track pT uses logarithmic bin edges to
+  // retain sensitivity to rare anomalously high-pT ("monster") tracks.
+  constexpr int nTrackPtBins = 160;
+  std::array<double, nTrackPtBins + 1> trackPtEdges{};
+  for (int i = 0; i <= nTrackPtBins; ++i)
+    trackPtEdges[i] = 0.5 * std::pow(20000.0, static_cast<double>(i) / nTrackPtBins);
+  auto hTrackPt = std::make_unique<TH1D>(
+      "hTrackPt", "Selected track p_{T};Track p_{T} [GeV/c];Tracks",
+      nTrackPtBins, trackPtEdges.data());
+  auto hTrackCharge = std::make_unique<TH1D>(
+      "hTrackCharge", "Selected track charge;Track charge [e];Tracks",
+      7, -3.5, 3.5);
+  auto hMatchDeltaR = std::make_unique<TH1D>(
+      "hMatchDeltaR", "Matched tracks in selected jets;#DeltaR(track, jet);Matched tracks",
+      100, 0.0, 0.5);
 
   // Tower maps include only constituents belonging to jets passing the same
   // pT/eta selection as hEta/hPhi. One tower may appear in different jets/events.
@@ -209,6 +234,8 @@ int make_jetcharge_histograms(const char* inputSpec,
   Long64_t towerConstituentsSelected[3] = {0, 0, 0};
   Long64_t towerConstituentsInvalidGeometry = 0;
   Long64_t towerConstituentsUnknownSource = 0;
+  Long64_t nonfiniteTrackPt = 0;
+  double highestTrackPt = 0.;
   Float_t observedKappa = -1.0f;
 
 
@@ -236,6 +263,26 @@ int make_jetcharge_histograms(const char* inputSpec,
     hJetsPerEvent->Fill(*nJets);
     if (eventsRead == 1) observedKappa = *chargeKappa;
 
+    if (trackPt->size() != trackCharge->size() ||
+        trackPt->size() != static_cast<std::size_t>(*nTracks))
+    {
+      std::cerr << "ERROR: inconsistent selected track arrays at entry "
+                << (eventsRead - 1) << '\n';
+      return 1;
+    }
+    for (std::size_t t = 0; t < trackPt->size(); ++t)
+    {
+      const double pt = trackPt->at(t);
+      if (!std::isfinite(pt) || pt < 0.)
+      {
+        ++nonfiniteTrackPt;
+        continue;
+      }
+      highestTrackPt = std::max(highestTrackPt, pt);
+      hTrackPt->Fill(pt);
+      hTrackCharge->Fill(trackCharge->at(t));
+    }
+
     const std::size_t n = jetPt->size();
     jetsStored += static_cast<Long64_t>(n);
     if (jetCharge->size() != n || jetEta->size() != n ||
@@ -260,6 +307,18 @@ int make_jetcharge_histograms(const char* inputSpec,
         componentEnergy->size() == nComponents &&
         componentEta->size() == nComponents &&
         componentPhi->size() == nComponents;
+    const bool alignedMatches =
+        trackMatchOffset->size() == n + 1 &&
+        !trackMatchOffset->empty() &&
+        trackMatchOffset->front() == 0 &&
+        trackMatchOffset->back() == trackMatchDeltaR->size() &&
+        std::is_sorted(trackMatchOffset->begin(), trackMatchOffset->end());
+    if (!alignedMatches)
+    {
+      std::cerr << "ERROR: malformed matched-track offsets at entry "
+                << (eventsRead - 1) << '\n';
+      return 1;
+    }
     if (!aligned || componentOffset->front() != 0 ||
         componentOffset->back() != nComponents ||
         !std::is_sorted(componentOffset->begin(), componentOffset->end()))
@@ -296,6 +355,26 @@ int make_jetcharge_histograms(const char* inputSpec,
       }
       if (std::isfinite(jetMass->at(j))) hMass->Fill(jetMass->at(j));
       hNMatched->Fill(matched);
+
+      const auto matchBegin = trackMatchOffset->at(j);
+      const auto matchEnd = trackMatchOffset->at(j + 1);
+      if (matchEnd - matchBegin != static_cast<std::size_t>(matched))
+      {
+        std::cerr << "ERROR: matched-track count/offset mismatch at entry "
+                  << (eventsRead - 1) << " jet " << j << '\n';
+        return 1;
+      }
+      for (std::size_t m = matchBegin; m < matchEnd; ++m)
+      {
+        const double deltaR = trackMatchDeltaR->at(m);
+        if (!std::isfinite(deltaR) || deltaR < 0.)
+        {
+          std::cerr << "ERROR: invalid matched-track delta R at entry "
+                    << (eventsRead - 1) << '\n';
+          return 1;
+        }
+        hMatchDeltaR->Fill(deltaR);
+      }
 
       for (std::size_t c = componentOffset->at(j);
            c < componentOffset->at(j + 1); ++c)
@@ -349,7 +428,8 @@ int make_jetcharge_histograms(const char* inputSpec,
       hChargeVsPt->Fill(pt, charge);
       if (pt >= 2 && pt < 5) hCharge2to5->Fill(charge);
       else if (pt >= 5 && pt < 10) hCharge5to10->Fill(charge);
-      else if (pt >= 10) hCharge10plus->Fill(charge);
+      else if (pt >= 10 && pt < 15) hCharge10to15->Fill(charge);
+      else if (pt >= 15) hCharge15plus->Fill(charge);
     }
   }
 
@@ -371,7 +451,9 @@ int make_jetcharge_histograms(const char* inputSpec,
   hPtAll->Write(); hPtFid->Write(); hJetsPerEvent->Write();
   hEta->Write(); hPhi->Write(); hMass->Write();
   hChargeAll->Write(); hChargeMatched->Write();
-  hCharge2to5->Write(); hCharge5to10->Write(); hCharge10plus->Write();
+  hCharge2to5->Write(); hCharge5to10->Write();
+  hCharge10to15->Write(); hCharge15plus->Write();
+  hTrackPt->Write(); hTrackCharge->Write(); hMatchDeltaR->Write();
   hNMatched->Write(); hChargeVsPt->Write();
   hJetEtaPhi->Write();
   for (std::size_t layer = 0; layer < caloSuffix.size(); ++layer)
@@ -407,6 +489,9 @@ int make_jetcharge_histograms(const char* inputSpec,
             << towerConstituentsSelected[2] << '\n'
             << "Constituents with invalid geometry: "
             << towerConstituentsInvalidGeometry << '\n'
+            << "Selected tracks with bad pT:     " << nonfiniteTrackPt << '\n'
+            << "Maximum selected track pT:       " << highestTrackPt << " GeV/c\n"
+            << "Track pT histogram overflow:     " << hTrackPt->GetBinContent(nTrackPtBins + 1) << '\n'
             << "Constituents with unexpected source: "
             << towerConstituentsUnknownSource << '\n'
             << "Histograms:                  " << outputFile << '\n'
