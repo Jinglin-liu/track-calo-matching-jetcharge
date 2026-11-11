@@ -1,10 +1,23 @@
 #!/bin/bash
 
-export USER="$(id -u -n)"
-export LOGNAME="$USER"
-export HOME="/sphenix/u/$USER"
+# Condor execute nodes may not have a working UID->username lookup (NSS).
+# In that case 'id -un' may return the numeric UID, which would incorrectly
+# construct /sphenix/u/<uid>/setup.sh.  Use this production repo owner's
+# account name as a fallback; no change is needed to getenv=False in the job.
+account_name=$(id -un 2>/dev/null || true)
+if [[ -z "$account_name" || "$account_name" =~ ^[0-9]+$ ]]; then
+  account_name="jlnliu"
+  echo "WARNING: UID $(id -u) has no resolvable username on $(hostname); using $account_name for setup." >&2
+fi
+export USER="$account_name"
+export LOGNAME="$account_name"
+export HOME="/sphenix/u/$account_name"
 
 # Initialize the sPHENIX environment and local installation in one place.
+if [[ ! -r "$HOME/setup.sh" ]]; then
+  echo "ERROR: setup file is not readable: $HOME/setup.sh (UID $(id -u))." >&2
+  exit 1
+fi
 source "$HOME/setup.sh" || exit 1
 
 export PATH="$HOME/.local/bin:$PATH"
