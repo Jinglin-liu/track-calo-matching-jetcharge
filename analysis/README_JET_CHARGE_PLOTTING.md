@@ -57,7 +57,7 @@ analysis/plots_run79516_unsubtracted/
         ...
         group_37.txt
     groups/
-        group_00/jetcharge_histograms.root   # 26 histograms + metadata
+        group_00/jetcharge_histograms.root   # 30 histograms + metadata
         ...
         group_37/jetcharge_histograms.root
     run79516_histograms.root                 # combined histograms
@@ -151,9 +151,9 @@ root -l -b -q 'merge_jetcharge_histograms.C("plots_run79516_unsubtracted/groups"
 ```
 
 This validates the presence of **38 distinct group directories**, the
-26 histograms' ROOT class/binning, jet mode labels, plotting cuts, and
+30 histograms' ROOT class/binning, jet mode labels, plotting cuts, and
 metadata before summing their bin contents. It saves a small combined ROOT
-file containing only the 26 histograms plus annotation and cut metadata.
+file containing only the 30 histograms plus annotation and cut metadata.
 Unlike raw `hadd`, it does **not accidentally sum per-group cut settings**.
 
 Check the result:
@@ -212,7 +212,7 @@ root -l -b -q 'plot_jetcharge_tree.C("../root/trackcalomatch_5GeV_unsub_run79516
 ```
 
 This writes `analysis/single_jetcharge_plots/jetcharge_histograms.root`
-and 12 PNG/PDF figure pairs in the same directory.
+and 15 PNG/PDF figure pairs in the same directory.
 
 ### Make + draw from all files in one pass (no groups)
 
@@ -283,7 +283,7 @@ ROOT files without `jet_component_eta` and `jet_component_phi` cannot
 produce these histograms. Regenerate the histograms from the new TTree files;
 old small histogram ROOT files also lack the new plots.
 
-The histogram maker produces **26 histograms** in total: 13 original jet-charge
+The histogram maker produces **30 histograms** in total: 13 original jet-charge
 and jet-kinematics histograms, one selected-jet `hJetEtaPhi`, and for each of
 retowered EMCal, IHCal, OHCal four constituent histograms:
 `hTowerEta<Layer>`, `hTowerPhi<Layer>`, `hTowerEtaPhi<Layer>`, and
@@ -325,3 +325,57 @@ produced, geometry-enabled TTree. After the test, use the same group script
 with explicit `--input-dir` and a fresh `--output-dir` to avoid mixing old
 13-histogram and new 26-histogram files. Re-run group histogram creation,
 then merge, then draw; the drawer alone cannot reconstruct missing plots.
+
+## Extended track and jet-charge QA (feature branch)
+
+All output ROOT files must be produced with the selected-track and matched-track
+branches from `JetChargeTreeMaker`: `track_pt`, `track_charge`, `n_tracks`,
+`jet_track_offset`, and `jet_track_delta_r`. These already exist in the current
+production TTree; no new Fun4All production is required to make the additional
+plots.
+
+The histogram maker writes **30 histograms**. In particular:
+
+- `hTrackPt`: all saved tracks' pT, with log-spaced bins from 0.5 to 10,000 GeV/c (track quality/production cuts apply). The maker prints the maximum observed pT and overflow count for unusually large tracks.
+- `hTrackCharge`: charges of all saved tracks (not restricted to those matched to jets).
+- `hMatchDeltaR`: track–jet matching ΔR of tracks assigned to jets passing the histogram-making jet pT and η cuts. The matching threshold in production is ΔR < 0.4.
+- `hNMatched`: number of associated tracks for each selected jet, including zero.
+- `hChargeVsPt`: jet charge versus jet pT for selected jets with at least one matched track.
+- Jet-charge distributions `hCharge5to10`, `hCharge10to15`, and `hCharge15plus` (GeV/c), for jets with at least one matched track. `hCharge2to5` remains in the histogram ROOT file but is **not plotted**. The old `hCharge10plus` is replaced by the two narrower bins.
+
+The drawer now writes PNG and PDF files into **two subdirectories** below the
+requested figure directory:
+
+```text
+figures/
+  QA/
+    jet_qa.png/.pdf
+    track_qa.png/.pdf
+    jet_pt_spectrum.png/.pdf
+    jet_mass.png/.pdf
+    jet_eta_phi.png/.pdf
+    tower_geometry_1d_Cemc.png/.pdf
+    tower_eta_phi_Cemc.png/.pdf
+    tower_geometry_1d_Ihcal.png/.pdf
+    tower_eta_phi_Ihcal.png/.pdf
+    tower_geometry_1d_Ohcal.png/.pdf
+    tower_eta_phi_Ohcal.png/.pdf
+  analysis/
+    jet_charge_overview.png/.pdf
+    jet_charge_pt_slices.png/.pdf
+    associated_tracks_per_jet.png/.pdf
+    jet_charge_vs_pt.png/.pdf
+```
+
+Both the standalone plot wrapper and the group/merge/draw workflows still accept
+their existing arguments. Example for the newer Lustre production:
+
+```bash
+bash analysis/make_jetcharge_groups.sh --run 79516 --group 00 \\
+  --input-dir /sphenix/tg/tg01/jets/jlnliu/JetChargeTree/trackcalomatch_5GeV_unsub_wtower_run79516 \\
+  --output-dir analysis/plots_run79516_wtower_QA --min-jet-pt 5 --max-abs-eta 0.7
+```
+
+Recreate group histogram files (prefer a **fresh** output directory) before
+merging and drawing: earlier 26-histogram outputs lack the new track QA and
+10–15/15+ charge slices, and cannot be updated by rerunning the drawer alone.
