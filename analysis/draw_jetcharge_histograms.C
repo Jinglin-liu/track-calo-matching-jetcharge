@@ -72,9 +72,21 @@ int draw_jetcharge_histograms(const char* histogramFile,
   TH1D* hCharge5to10 = nullptr;
   input.GetObject("hCharge5to10", hCharge5to10);
   if (!hCharge5to10) { std::cerr << "ERROR: missing or incorrect hCharge5to10 in " << histogramFile << '\n'; return 1; }
-  TH1D* hCharge10plus = nullptr;
-  input.GetObject("hCharge10plus", hCharge10plus);
-  if (!hCharge10plus) { std::cerr << "ERROR: missing or incorrect hCharge10plus in " << histogramFile << '\n'; return 1; }
+  TH1D* hCharge10to15 = nullptr;
+  input.GetObject("hCharge10to15", hCharge10to15);
+  if (!hCharge10to15) { std::cerr << "ERROR: missing hCharge10to15 in " << histogramFile << '\n'; return 1; }
+  TH1D* hCharge15plus = nullptr;
+  input.GetObject("hCharge15plus", hCharge15plus);
+  if (!hCharge15plus) { std::cerr << "ERROR: missing hCharge15plus in " << histogramFile << '\n'; return 1; }
+  TH1D* hTrackPt = nullptr;
+  input.GetObject("hTrackPt", hTrackPt);
+  if (!hTrackPt) { std::cerr << "ERROR: missing hTrackPt in " << histogramFile << '\n'; return 1; }
+  TH1D* hTrackCharge = nullptr;
+  input.GetObject("hTrackCharge", hTrackCharge);
+  if (!hTrackCharge) { std::cerr << "ERROR: missing hTrackCharge in " << histogramFile << '\n'; return 1; }
+  TH1D* hMatchDeltaR = nullptr;
+  input.GetObject("hMatchDeltaR", hMatchDeltaR);
+  if (!hMatchDeltaR) { std::cerr << "ERROR: missing hMatchDeltaR in " << histogramFile << '\n'; return 1; }
   TH1D* hNMatched = nullptr;
   input.GetObject("hNMatched", hNMatched);
   if (!hNMatched) { std::cerr << "ERROR: missing or incorrect hNMatched in " << histogramFile << '\n'; return 1; }
@@ -125,11 +137,16 @@ int draw_jetcharge_histograms(const char* histogramFile,
     return 1;
   }
 
-  if (gSystem->mkdir(outputDir, true) != 0 &&
-      gSystem->AccessPathName(outputDir))
+  const std::string qaDir = std::string(outputDir) + "/QA";
+  const std::string analysisDir = std::string(outputDir) + "/analysis";
+  for (const auto& dir : {qaDir, analysisDir})
   {
-    std::cerr << "ERROR: cannot create plot directory: " << outputDir << '\n';
-    return 1;
+    if (gSystem->mkdir(dir.c_str(), true) != 0 &&
+        gSystem->AccessPathName(dir.c_str()))
+    {
+      std::cerr << "ERROR: cannot create plot directory: " << dir << '\n';
+      return 1;
+    }
   }
 
   gStyle->SetOptStat(0);
@@ -188,7 +205,7 @@ int draw_jetcharge_histograms(const char* histogramFile,
   cJetQA->cd(4);
   plot1d(hJetsPerEvent, kBlue + 1, true);
 
-  // 2x2 jet-charge QA: inclusive Q, matched-track-only Q, Nmatched, Q vs pT
+  // 2x2 jet-charge analysis overview: inclusive Q, matched Q, Nmatched, Q vs pT
   auto cChargeQA = std::make_unique<TCanvas>("cChargeQA", "Jet charge QA", 1300, 980);
   cChargeQA->Divide(2, 2);
   cChargeQA->cd(1);
@@ -224,13 +241,39 @@ int draw_jetcharge_histograms(const char* histogramFile,
       "cChargeSlices", "Jet charge by jet pT", 1500, 520);
   cChargeSlices->Divide(3, 1);
   cChargeSlices->cd(1);
-  plot1d(hCharge2to5, kBlue + 1, true);
+  plot1d(hCharge5to10, kBlue + 1, true);
   cChargeSlices->cd(2);
-  plot1d(hCharge5to10, kOrange + 7, true);
+  plot1d(hCharge10to15, kOrange + 7, true);
   cChargeSlices->cd(3);
-  plot1d(hCharge10plus, kRed + 1, true);
+  plot1d(hCharge15plus, kRed + 1, true);
   auto tagChargeSlices = AnalysisUtils::makeSphenixTag(0.51, 0.77, 0.91, 0.92);
   tagChargeSlices->Draw();
+
+  // Dedicated QA figures: selected track charge, monster-track pT and
+  // delta R of matched tracks in jets passing the plotting jet cuts.
+  auto cTrackQA = std::make_unique<TCanvas>(
+      "cTrackQA", "Selected track QA", 1500, 500);
+  cTrackQA->Divide(3, 1);
+  cTrackQA->cd(1);
+  plot1d(hTrackCharge, kBlue + 1, true);
+  cTrackQA->cd(2);
+  gPad->SetLogx(true);
+  plot1d(hTrackPt, kRed + 1, true);
+  cTrackQA->cd(3);
+  plot1d(hMatchDeltaR, kBlue + 1, false);
+
+  // Dedicated analysis plots for matched-track multiplicity and jet charge vs pT.
+  auto cMatchedTracks = std::make_unique<TCanvas>(
+      "cMatchedTracks", "Associated tracks per selected jet", 900, 680);
+  cMatchedTracks->cd();
+  plot1d(hNMatched, kBlue + 1, true);
+
+  auto cChargeVsPt = std::make_unique<TCanvas>(
+      "cChargeVsPt", "Jet charge versus jet pT", 1000, 750);
+  cChargeVsPt->cd();
+  gPad->SetRightMargin(0.16);
+  gPad->SetLogz(false);
+  hChargeVsPt->Draw("COLZ");
 
   // Extra single-panel pT spectrum and jet-mass QA.
   auto cPt = std::make_unique<TCanvas>("cPt", "Jet pT spectrum", 900, 680);
@@ -283,7 +326,7 @@ int draw_jetcharge_histograms(const char* histogramFile,
              {cTowerGeometry[i].get(), "tower_geometry_1d_" + caloSuffix[i]},
              {cTowerMaps[i].get(), "tower_eta_phi_" + caloSuffix[i]}}})
     {
-      const std::string path = std::string(outputDir) + "/" + output.second;
+      const std::string path = qaDir + "/" + output.second;
       output.first->SaveAs((path + ".png").c_str());
       output.first->SaveAs((path + ".pdf").c_str());
     }
@@ -294,26 +337,30 @@ int draw_jetcharge_histograms(const char* histogramFile,
   cJetEtaPhi->cd();
   gPad->SetRightMargin(0.16);
   hJetEtaPhi->Draw("COLZ");
-  const std::string jetMapPath = std::string(outputDir) + "/jet_eta_phi";
+  const std::string jetMapPath = qaDir + "/jet_eta_phi";
   cJetEtaPhi->SaveAs((jetMapPath + ".png").c_str());
   cJetEtaPhi->SaveAs((jetMapPath + ".pdf").c_str());
 
-  struct OutputCanvas { TCanvas* canvas; const char* name; };
+  struct OutputCanvas { TCanvas* canvas; const char* name; const std::string* directory; };
   const OutputCanvas outputs[] = {
-      {cJetQA.get(), "jet_qa"},
-      {cChargeQA.get(), "jet_charge_qa"},
-      {cChargeSlices.get(), "jet_charge_pt_slices"},
-      {cPt.get(), "jet_pt_spectrum"},
-      {cMass.get(), "jet_mass"}};
+      {cJetQA.get(), "jet_qa", &qaDir},
+      {cTrackQA.get(), "track_qa", &qaDir},
+      {cPt.get(), "jet_pt_spectrum", &qaDir},
+      {cMass.get(), "jet_mass", &qaDir},
+      {cChargeQA.get(), "jet_charge_overview", &analysisDir},
+      {cChargeSlices.get(), "jet_charge_pt_slices", &analysisDir},
+      {cMatchedTracks.get(), "associated_tracks_per_jet", &analysisDir},
+      {cChargeVsPt.get(), "jet_charge_vs_pt", &analysisDir}};
 
   for (const auto& item : outputs)
   {
-    const std::string path = std::string(outputDir) + "/" + item.name;
+    const std::string path = *item.directory + "/" + item.name;
     item.canvas->SaveAs((path + ".png").c_str());
     item.canvas->SaveAs((path + ".pdf").c_str());
   }
 
 
-  std::cout << "Figures saved under " << outputDir << '\n';
+  std::cout << "QA figures: " << qaDir << '\n'
+            << "Analysis figures: " << analysisDir << '\n';
   return 0;
 }
