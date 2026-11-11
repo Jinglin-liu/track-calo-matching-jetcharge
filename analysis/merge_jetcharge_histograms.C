@@ -64,7 +64,8 @@ int merge_jetcharge_histograms(const char* groupsDir,
   const std::vector<std::string> names = {
     "hPtAll", "hPtFid", "hJetsPerEvent", "hEta", "hPhi", "hMass",
     "hChargeAll", "hChargeMatched", "hCharge2to5", "hCharge5to10",
-    "hCharge10plus", "hNMatched", "hChargeVsPt", "hJetEtaPhi",
+    "hCharge10to15", "hCharge15plus", "hNMatched", "hChargeVsPt",
+    "hTrackPt", "hTrackCharge", "hMatchDeltaR", "hJetEtaPhi",
     "hTowerEtaCemc", "hTowerPhiCemc", "hTowerEtaPhiCemc", "hTowerEtaPhiEnergyCemc",
     "hTowerEtaIhcal", "hTowerPhiIhcal", "hTowerEtaPhiIhcal", "hTowerEtaPhiEnergyIhcal",
     "hTowerEtaOhcal", "hTowerPhiOhcal", "hTowerEtaPhiOhcal", "hTowerEtaPhiEnergyOhcal"};
