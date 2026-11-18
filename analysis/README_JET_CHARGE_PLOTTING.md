@@ -1,6 +1,33 @@
 # Jet-charge QA plotting for Run 79516: no large TTree hadd needed
 
-This workflow reads the production `JetChargeInputTree` files with ROOT `TChain`
+## TTree and production filename naming (current feature branch)
+
+**Future production** from `JetChargeTreeMaker` now writes a TTree named
+`JetChargeTree`, in files named `jet_charge_MODE_RUN_SEGMENT_SKIP.root`.
+For example, `jet_charge_unsubtracted_00079516_02262_00000.root`.
+
+**Existing Run 79516 production** is unchanged: those ROOT files still use
+`JetChargeInputTree` and the filename prefix `jet_charge_inputs_`.
+Do not rerun Fun4All or rename the legacy outputs just for this change.
+The histogram maker checks each ROOT file for exactly one of the two TTree
+names and supports new/legacy names in the same manifest or file glob.
+The group script checks each expected segment/skip for both filename
+prefixes and fails if *both* exist for one segment/skip, preventing
+ambiguous double counting. Existing explicit manifests continue to work.
+
+New production needs the updated `libtrack_to_calo.so` **rebuilt and
+installed** after pulling the changes, and the updated Fun4All macro;
+the on-disk TTree name is set by the compiled `JetChargeTreeMaker`
+module. No rebuild is necessary when only reading the already-produced
+ROOT files with the analysis macros.
+
+The wildcard examples later in this guide refer to the **legacy** Run
+79516 files. For new files use the `jet_charge_unsubtracted_*.root`
+pattern, or a manifest containing either generation.
+
+
+
+This workflow reads either `JetChargeTree` or legacy `JetChargeInputTree` files with ROOT `TChain`
 and stores **26 small histograms**, not a copy of the original event TTrees.
 `make_jetcharge_histograms.C` fills histograms; `draw_jetcharge_histograms.C`
 draws PNG/PDF figures from a histogram file; `plot_jetcharge_tree.C` remains
