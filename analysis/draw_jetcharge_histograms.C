@@ -429,7 +429,9 @@ int draw_jetcharge_histograms(const char* histogramFile,
         gPad->SetLogz(false);
         TH2D* hist = normalized ? normalizedMaps[p].get() : hTowerEtaPhiPt[i][p];
         hist->SetMinimum(0.);
-        hist->SetMaximum(normalized ? normMax : rawMax);
+        // ROOT needs a positive Z maximum even when a jet-pT slice is empty.
+        const double zMax = normalized ? normMax : rawMax;
+        hist->SetMaximum(zMax > 0. ? zMax : 1.);
         hist->Draw("COLZ");
       }
       const std::string stem = towerDir + "/tower_eta_phi_pt_" +
