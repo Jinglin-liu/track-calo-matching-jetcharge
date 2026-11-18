@@ -149,7 +149,7 @@ for list in "${selected[@]}"; do
     old_path="$input_dir/jet_charge_inputs_${mode}_${run8}_${segment}_${skip5}.root"
     if [[ -f "$new_path" && -f "$old_path" ]]; then
       echo "ERROR: ambiguous new and legacy ROOT files for segment $segment skip $skip5:" >&2
-      printf '  %s\\n  %s\\n' "$new_path" "$old_path" >&2
+      printf '  %s\n  %s\n' "$new_path" "$old_path" >&2
       rm -f "$tmp_manifest"; exit 1
     elif [[ -f "$new_path" ]]; then
       path="$new_path"
@@ -157,7 +157,7 @@ for list in "${selected[@]}"; do
       path="$old_path"
     else
       echo "ERROR: missing expected ROOT file (checked both names):" >&2
-      printf '  %s\\n  %s\\n' "$new_path" "$old_path" >&2
+      printf '  %s\n  %s\n' "$new_path" "$old_path" >&2
       rm -f "$tmp_manifest"; exit 1
     fi
     printf '%s\n' "$path" >> "$tmp_manifest"
