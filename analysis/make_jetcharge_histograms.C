@@ -1,4 +1,4 @@
-// Read JetChargeInputTree from a single ROOT file, wildcard, or line-delimited
+// Read JetChargeTree (or legacy JetChargeInputTree) from a ROOT file, wildcard, or line-delimited
 // text manifest of ROOT paths. Reads jet kinematics and accepted-jet tower constituents.
 // Typical call from analysis/:
 // root -l -b -q 'make_jetcharge_histograms.C("../root/trackcalomatch_5GeV_unsub_run79516/jet_charge_inputs_unsubtracted_00079516_*.root","plots_run79516/jetcharge_histograms.root",5.0,0.7)'
@@ -12,6 +12,7 @@
 
 #include <TChain.h>
 #include <TFile.h>
+#include <TTree.h>
 #include <TH1D.h>
 #include <TH2D.h>
 #include <TNamed.h>
@@ -24,6 +25,7 @@
 #include <array>
 #include <cmath>
 #include <fstream>
+#include <glob.h>
 #include <iostream>
 #include <memory>
 #include <set>
@@ -43,11 +45,14 @@ int make_jetcharge_histograms(const char* inputSpec,
     return 1;
   }
 
-  TChain chain("JetChargeInputTree");
+  // New analysis outputs use JetChargeTree; older Run 79516 files use
+  // JetChargeInputTree. ROOT TChain::AddFile allows a per-file tree name,
+  // so a manifest can contain both without modifying the original files.
+  TChain chain("JetChargeTree");
   const std::string spec(inputSpec);
   const bool manifest = spec.size() >= 4 && spec.substr(spec.size() - 4) == ".txt";
-  int nFiles = 0;
-  std::string firstInputPath;
+  std::vector<std::string> paths;
+  std::set<std::string> seen;
   if (manifest)
   {
     std::ifstream list(spec);
@@ -56,7 +61,6 @@ int make_jetcharge_histograms(const char* inputSpec,
       std::cerr << "ERROR: cannot open manifest: " << spec << '\n';
       return 1;
     }
-    std::set<std::string> unique;
     std::string line;
     while (std::getline(list, line))
     {
@@ -64,30 +68,87 @@ int make_jetcharge_histograms(const char* inputSpec,
       if (first == std::string::npos || line[first] == '#') continue;
       const auto last = line.find_last_not_of(" \t\r\n");
       const std::string path = line.substr(first, last - first + 1);
-      if (!unique.insert(path).second)
+      if (!seen.insert(path).second)
       {
         std::cerr << "ERROR: duplicate path in manifest: " << path << '\n';
         return 1;
       }
-      if (gSystem->AccessPathName(path.c_str()))
-      {
-        std::cerr << "ERROR: missing ROOT input: " << path << '\n';
-        return 1;
-      }
-      if (firstInputPath.empty()) firstInputPath = path;
-      nFiles += chain.Add(path.c_str());
+      paths.push_back(path);
     }
   }
   else
   {
-    nFiles = chain.Add(inputSpec);
+    // Expand local globs explicitly. TChain::Add() cannot reliably discover
+    // both tree names without first examining the actual ROOT files.
+    glob_t matches{};
+    const int result = glob(spec.c_str(), 0, nullptr, &matches);
+    if (result != 0)
+    {
+      std::cerr << "ERROR: input path/glob matched no files: " << spec
+                << " (glob status " << result << ")\n";
+      globfree(&matches);
+      return 1;
+    }
+    for (std::size_t k = 0; k < matches.gl_pathc; ++k)
+    {
+      const std::string path = matches.gl_pathv[k];
+      if (seen.insert(path).second) paths.push_back(path);
+    }
+    globfree(&matches);
   }
 
-  if (nFiles <= 0 || chain.LoadTree(0) < 0)
+  if (paths.empty())
   {
-    std::cerr << "ERROR: no readable JetChargeInputTree in input: " << spec << '\n';
+    std::cerr << "ERROR: no ROOT paths found in: " << spec << '\n';
     return 1;
   }
+  int nFiles = 0;
+  int nNewTrees = 0, nLegacyTrees = 0;
+  const std::string firstInputPath = paths.front();
+  for (const auto& path : paths)
+  {
+    if (gSystem->AccessPathName(path.c_str()))
+    {
+      std::cerr << "ERROR: missing ROOT input: " << path << '\n';
+      return 1;
+    }
+    std::unique_ptr<TFile> input(TFile::Open(path.c_str(), "READ"));
+    if (!input || input->IsZombie())
+    {
+      std::cerr << "ERROR: cannot open ROOT input: " << path << '\n';
+      return 1;
+    }
+    TTree* newTree = nullptr;
+    TTree* oldTree = nullptr;
+    input->GetObject("JetChargeTree", newTree);
+    input->GetObject("JetChargeInputTree", oldTree);
+    if ((newTree == nullptr) == (oldTree == nullptr))
+    {
+      std::cerr << "ERROR: expected exactly one of JetChargeTree and "
+                   "JetChargeInputTree in: " << path << '\n';
+      return 1;
+    }
+    const char* treeName = newTree ? "JetChargeTree" : "JetChargeInputTree";
+    if (newTree) ++nNewTrees;
+    else ++nLegacyTrees;
+    // Explicit nentries and tree name use the inspected object, even if
+    // a file from the new production is mixed with legacy files.
+    if (chain.AddFile(path.c_str(), TTree::kMaxEntries, treeName) != 1)
+    {
+      std::cerr << "ERROR: cannot add ROOT input tree " << treeName
+                << " from " << path << '\n';
+      return 1;
+    }
+    ++nFiles;
+  }
+  if (nFiles <= 0 || chain.LoadTree(0) < 0)
+  {
+    std::cerr << "ERROR: no readable JetChargeTree/JetChargeInputTree in "
+              << spec << '\n';
+    return 1;
+  }
+  std::cout << "Input tree names: JetChargeTree=" << nNewTrees
+            << ", legacy JetChargeInputTree=" << nLegacyTrees << '\n';
   const char* requiredBranches[] = {
       "jet_pt", "jet_charge", "jet_eta", "jet_phi", "jet_mass",
       "track_pt", "track_charge", "n_tracks",
@@ -531,7 +592,7 @@ int make_jetcharge_histograms(const char* inputSpec,
   TParameter<Long64_t>("jetcharge_events_read", eventsRead).Write();
   histFile.Close();
 
-  std::cout << "\n========== JetChargeInputTree QA ==========\n"
+  std::cout << "\n========== JetChargeTree QA ==========\n"
             << "Events read:                  " << eventsRead << '\n'
             << "Jets stored (vector lengths): " << jetsStored << '\n'
             << "Jets with invalid/negative pT: " << jetsNonfinitePt << '\n'
