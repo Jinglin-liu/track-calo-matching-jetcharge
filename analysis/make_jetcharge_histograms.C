@@ -220,13 +220,12 @@ int make_jetcharge_histograms(const char* inputSpec,
   std::array<std::unique_ptr<TH2D>, 3> hTowerEtaPhi;
   std::array<std::unique_ptr<TH2D>, 3> hTowerEtaPhiEnergy;
   std::array<std::array<std::unique_ptr<TH2D>, 3>, 3> hTowerEtaPhiPt;
-  std::array<std::unique_ptr<TH1D>, 1> hSelectedJetPtSliceCount = {{
-      std::make_unique<TH1D>(
-          "hSelectedJetPtSliceCount",
-          "Selected jets in jet p_{T} slices;Jet p_{T} slice;Selected jets",
-          3, 0.5, 3.5)}};
+  auto hSelectedJetPtSliceCount = std::make_unique<TH1D>(
+      "hSelectedJetPtSliceCount",
+      "Selected jets in jet p_{T} slices;Jet p_{T} slice;Selected jets",
+      3, 0.5, 3.5);
   for (std::size_t p = 0; p < JetChargePlots::kJetPtSliceSuffix.size(); ++p)
-    hSelectedJetPtSliceCount[0]->GetXaxis()->SetBinLabel(
+    hSelectedJetPtSliceCount->GetXaxis()->SetBinLabel(
         p + 1, JetChargePlots::kJetPtSliceLabel[p]);
   for (std::size_t i = 0; i < caloSuffix.size(); ++i)
   {
@@ -402,7 +401,7 @@ int make_jetcharge_histograms(const char* inputSpec,
       hNMatched->Fill(matched);
       hNMatchedVsJetPt->Fill(pt, matched);
       const int ptSlice = JetChargePlots::jetPtSlice(pt);
-      if (ptSlice >= 0) hSelectedJetPtSliceCount[0]->Fill(ptSlice + 1);
+      if (ptSlice >= 0) hSelectedJetPtSliceCount->Fill(ptSlice + 1);
 
       const auto matchBegin = trackMatchOffset->at(j);
       const auto matchEnd = trackMatchOffset->at(j + 1);
@@ -511,7 +510,7 @@ int make_jetcharge_histograms(const char* inputSpec,
   hNMatched->Write(); hChargeVsPt->Write();
   hNMatchedVsJetPt->Write(); hDeltaRVsJetPt->Write();
   hMatchedTrackPt->Write(); hMatchedTrackCharge->Write();
-  hSelectedJetPtSliceCount[0]->Write();
+  hSelectedJetPtSliceCount->Write();
   hJetEtaPhi->Write();
   for (std::size_t layer = 0; layer < caloSuffix.size(); ++layer)
   {
