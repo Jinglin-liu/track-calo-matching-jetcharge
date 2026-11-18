@@ -14,7 +14,10 @@
 int plot_jetcharge_tree(const char* filename,
                          const char* outputDir = "jetcharge_plots",
                          double minChargeJetPt = 0.0,
-                         double maxAbsEta = 0.7)
+                         double maxAbsEta = 0.7,
+                         bool drawTowerQA = true,
+                         bool drawTrackQA = true,
+                         bool drawJetQA = true)
 {
   if (!filename || !*filename || !outputDir || !*outputDir)
   {
@@ -28,7 +31,8 @@ int plot_jetcharge_tree(const char* filename,
     std::cerr << "ERROR: could not generate histograms; skipping drawing.\n";
     return 1;
   }
-  if (draw_jetcharge_histograms(histPath.c_str(), outputDir) != 0)
+  if (draw_jetcharge_histograms(histPath.c_str(), outputDir,
+                                drawTowerQA, drawTrackQA, drawJetQA) != 0)
   {
     std::cerr << "ERROR: histogram generation succeeded but drawing failed.\n";
     return 1;
