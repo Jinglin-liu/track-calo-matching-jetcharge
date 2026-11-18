@@ -615,7 +615,7 @@ void Fun4All_TrackCaloMatch(const int nEvents = 100,
             jetTreePath += "/";
         }
         gSystem->mkdir(jetTreePath.c_str(), true);
-        jetTreePath += "jet_charge_inputs_" + jetMode + "_" + nice_runnumber.str()
+        jetTreePath += "jet_charge_" + jetMode + "_" + nice_runnumber.str()
                     + "_" + nice_segment.str()
                     + "_" + nice_skip.str() + ".root";
 
