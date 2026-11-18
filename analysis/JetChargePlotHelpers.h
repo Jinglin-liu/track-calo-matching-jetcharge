@@ -4,6 +4,8 @@
 // Common reconstruction-mode labels for the jet-charge plotting macros.
 // Filename/directory tags are annotations, not verified reconstruction metadata.
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cctype>
 #include <iostream>
 #include <regex>
@@ -11,6 +13,21 @@
 
 namespace JetChargePlots
 {
+  // Shared jet-pT slices for charge distributions and constituent tower QA.
+  // The matching-based and tower-based observables use the same jet-axis cuts.
+  inline constexpr std::array<const char*, 3> kJetPtSliceSuffix = {
+      "5to10", "10to15", "15plus"};
+  inline constexpr std::array<const char*, 3> kJetPtSliceLabel = {
+      "5-10 GeV/c", "10-15 GeV/c", ">=15 GeV/c"};
+
+  inline int jetPtSlice(double pt)
+  {
+    if (!std::isfinite(pt) || pt < 5.) return -1;
+    if (pt < 10.) return 0;
+    if (pt < 15.) return 1;
+    return 2;
+  }
+
   struct JetPlotSource
   {
     std::string mode = "Calorimeter";
