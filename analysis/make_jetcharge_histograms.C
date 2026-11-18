@@ -4,7 +4,7 @@
 // root -l -b -q 'make_jetcharge_histograms.C("../root/trackcalomatch_5GeV_unsub_run79516/jet_charge_inputs_unsubtracted_00079516_*.root","plots_run79516/jetcharge_histograms.root",5.0,0.7)'
 //
 // Returns 0 on success, nonzero on error for ROOT batch-mode exit status.
-// Each call writes 30 histograms; no event-level TTree is copied.
+// Each call writes 44 histograms; no event-level TTree is copied.
 // Batch manifests must list one ROOT file path per line (blank/# skipped).
 // Use the same cuts and identical binning in every group before hadd.
 
@@ -91,7 +91,7 @@ int make_jetcharge_histograms(const char* inputSpec,
   const char* requiredBranches[] = {
       "jet_pt", "jet_charge", "jet_eta", "jet_phi", "jet_mass",
       "track_pt", "track_charge", "n_tracks",
-      "jet_track_offset", "jet_track_delta_r",
+      "jet_track_offset", "jet_track_index", "jet_track_delta_r",
       "jet_n_matched_tracks", "n_jets", "jet_charge_kappa",
       "jet_component_offset", "jet_component_source", "jet_component_energy",
       "jet_component_eta", "jet_component_phi"};
@@ -126,6 +126,7 @@ int make_jetcharge_histograms(const char* inputSpec,
   TTreeReaderValue<std::vector<int>> trackCharge(reader, "track_charge");
   TTreeReaderValue<Int_t> nTracks(reader, "n_tracks");
   TTreeReaderValue<std::vector<unsigned int>> trackMatchOffset(reader, "jet_track_offset");
+  TTreeReaderValue<std::vector<unsigned int>> trackMatchIndex(reader, "jet_track_index");
   TTreeReaderValue<std::vector<float>> trackMatchDeltaR(reader, "jet_track_delta_r");
   TTreeReaderValue<std::vector<float>> jetPt(reader, "jet_pt");
   TTreeReaderValue<std::vector<float>> jetCharge(reader, "jet_charge");
@@ -171,6 +172,14 @@ int make_jetcharge_histograms(const char* inputSpec,
       "hCharge15plus", "jet p_{T} #geq 15 GeV/c;Q^{#kappa};Jets", 160, -4, 4);
   auto hNMatched = std::make_unique<TH1D>(
       "hNMatched", "Track-to-jet matching;Matched tracks per jet;Jets", 21, -0.5, 20.5);
+  auto hNMatchedVsJetPt = std::make_unique<TH2D>(
+      "hNMatchedVsJetPt",
+      "Associated tracks vs jet p_{T};Jet p_{T} [GeV/c];Matched tracks per jet",
+      110, 5, 60, 21, -0.5, 20.5);
+  auto hDeltaRVsJetPt = std::make_unique<TH2D>(
+      "hDeltaRVsJetPt",
+      "Track-jet #DeltaR vs jet p_{T};Jet p_{T} [GeV/c];#DeltaR(track,jet)",
+      110, 5, 60, 80, 0, 0.4);
   auto hChargeVsPt = std::make_unique<TH2D>(
       "hChargeVsPt", "Jet charge vs p_{T} (matched jets);Jet p_{T} [GeV/c];Q^{#kappa}",
       100, 0, 30, 120, -4, 4);
@@ -186,6 +195,12 @@ int make_jetcharge_histograms(const char* inputSpec,
       nTrackPtBins, trackPtEdges.data());
   auto hTrackCharge = std::make_unique<TH1D>(
       "hTrackCharge", "Selected track charge;Track charge [e];Tracks",
+      7, -3.5, 3.5);
+  auto hMatchedTrackPt = std::make_unique<TH1D>(
+      "hMatchedTrackPt", "Selected-jet associated track p_{T};Track p_{T} [GeV/c];Matched tracks",
+      nTrackPtBins, trackPtEdges.data());
+  auto hMatchedTrackCharge = std::make_unique<TH1D>(
+      "hMatchedTrackCharge", "Selected-jet associated track charge;Track charge [e];Matched tracks",
       7, -3.5, 3.5);
   auto hMatchDeltaR = std::make_unique<TH1D>(
       "hMatchDeltaR", "Matched tracks in selected jets;#DeltaR(track, jet);Matched tracks",
@@ -204,6 +219,15 @@ int make_jetcharge_histograms(const char* inputSpec,
   std::array<std::unique_ptr<TH1D>, 3> hTowerPhi;
   std::array<std::unique_ptr<TH2D>, 3> hTowerEtaPhi;
   std::array<std::unique_ptr<TH2D>, 3> hTowerEtaPhiEnergy;
+  std::array<std::array<std::unique_ptr<TH2D>, 3>, 3> hTowerEtaPhiPt;
+  std::array<std::unique_ptr<TH1D>, 1> hSelectedJetPtSliceCount = {{
+      std::make_unique<TH1D>(
+          "hSelectedJetPtSliceCount",
+          "Selected jets in jet p_{T} slices;Jet p_{T} slice;Selected jets",
+          3, 0.5, 3.5)}};
+  for (std::size_t p = 0; p < JetChargePlots::kJetPtSliceSuffix.size(); ++p)
+    hSelectedJetPtSliceCount[0]->GetXaxis()->SetBinLabel(
+        p + 1, JetChargePlots::kJetPtSliceLabel[p]);
   for (std::size_t i = 0; i < caloSuffix.size(); ++i)
   {
     hTowerEta[i] = std::make_unique<TH1D>(
@@ -222,6 +246,16 @@ int make_jetcharge_histograms(const char* inputSpec,
         ("hTowerEtaPhiEnergy" + caloSuffix[i]).c_str(),
         (caloTitle[i] + " constituent energy sum [GeV];Tower #eta;Tower #phi [rad]").c_str(),
         96, -1.2, 1.2, 72, -pi, pi);
+    for (std::size_t p = 0; p < JetChargePlots::kJetPtSliceSuffix.size(); ++p)
+    {
+      const std::string name = "hTowerEtaPhiPt" + caloSuffix[i] +
+          JetChargePlots::kJetPtSliceSuffix[p];
+      const std::string title = caloTitle[i] + " tower occupancy, jet p_{T} " +
+          JetChargePlots::kJetPtSliceLabel[p] +
+          ";Tower #eta;Tower #phi [rad]";
+      hTowerEtaPhiPt[i][p] = std::make_unique<TH2D>(
+          name.c_str(), title.c_str(), 96, -1.2, 1.2, 72, -pi, pi);
+    }
   }
 
   Long64_t eventsRead = 0;
@@ -312,6 +346,7 @@ int make_jetcharge_histograms(const char* inputSpec,
         !trackMatchOffset->empty() &&
         trackMatchOffset->front() == 0 &&
         trackMatchOffset->back() == trackMatchDeltaR->size() &&
+        trackMatchOffset->back() == trackMatchIndex->size() &&
         std::is_sorted(trackMatchOffset->begin(), trackMatchOffset->end());
     if (!alignedMatches)
     {
@@ -326,6 +361,16 @@ int make_jetcharge_histograms(const char* inputSpec,
       std::cerr << "ERROR: malformed jet constituent arrays at tree entry "
                 << (eventsRead - 1) << "; aborting to avoid incomplete tower QA.\n";
       return 1;
+    }
+
+    for (const auto index : *trackMatchIndex)
+    {
+      if (index >= trackPt->size())
+      {
+        std::cerr << "ERROR: associated track index out of range at entry "
+                  << (eventsRead - 1) << '\n';
+        return 1;
+      }
     }
 
     for (std::size_t j = 0; j < nCommon; ++j)
@@ -355,6 +400,9 @@ int make_jetcharge_histograms(const char* inputSpec,
       }
       if (std::isfinite(jetMass->at(j))) hMass->Fill(jetMass->at(j));
       hNMatched->Fill(matched);
+      hNMatchedVsJetPt->Fill(pt, matched);
+      const int ptSlice = JetChargePlots::jetPtSlice(pt);
+      if (ptSlice >= 0) hSelectedJetPtSliceCount[0]->Fill(ptSlice + 1);
 
       const auto matchBegin = trackMatchOffset->at(j);
       const auto matchEnd = trackMatchOffset->at(j + 1);
@@ -374,6 +422,10 @@ int make_jetcharge_histograms(const char* inputSpec,
           return 1;
         }
         hMatchDeltaR->Fill(deltaR);
+        hDeltaRVsJetPt->Fill(pt, deltaR);
+        const auto trackIndex = trackMatchIndex->at(m);
+        hMatchedTrackPt->Fill(trackPt->at(trackIndex));
+        hMatchedTrackCharge->Fill(trackCharge->at(trackIndex));
       }
 
       for (std::size_t c = componentOffset->at(j);
@@ -409,6 +461,8 @@ int make_jetcharge_histograms(const char* inputSpec,
         hTowerEta[layer]->Fill(towerEta);
         hTowerPhi[layer]->Fill(towerPhi);
         hTowerEtaPhi[layer]->Fill(towerEta, towerPhi);
+        if (ptSlice >= 0)
+          hTowerEtaPhiPt[layer][ptSlice]->Fill(towerEta, towerPhi);
 
         const double energy = componentEnergy->at(c);
         if (std::isfinite(energy))
@@ -427,9 +481,9 @@ int make_jetcharge_histograms(const char* inputSpec,
       hChargeMatched->Fill(charge);
       hChargeVsPt->Fill(pt, charge);
       if (pt >= 2 && pt < 5) hCharge2to5->Fill(charge);
-      else if (pt >= 5 && pt < 10) hCharge5to10->Fill(charge);
-      else if (pt >= 10 && pt < 15) hCharge10to15->Fill(charge);
-      else if (pt >= 15) hCharge15plus->Fill(charge);
+      else if (ptSlice == 0) hCharge5to10->Fill(charge);
+      else if (ptSlice == 1) hCharge10to15->Fill(charge);
+      else if (ptSlice == 2) hCharge15plus->Fill(charge);
     }
   }
 
@@ -455,6 +509,9 @@ int make_jetcharge_histograms(const char* inputSpec,
   hCharge10to15->Write(); hCharge15plus->Write();
   hTrackPt->Write(); hTrackCharge->Write(); hMatchDeltaR->Write();
   hNMatched->Write(); hChargeVsPt->Write();
+  hNMatchedVsJetPt->Write(); hDeltaRVsJetPt->Write();
+  hMatchedTrackPt->Write(); hMatchedTrackCharge->Write();
+  hSelectedJetPtSliceCount[0]->Write();
   hJetEtaPhi->Write();
   for (std::size_t layer = 0; layer < caloSuffix.size(); ++layer)
   {
@@ -462,6 +519,7 @@ int make_jetcharge_histograms(const char* inputSpec,
     hTowerPhi[layer]->Write();
     hTowerEtaPhi[layer]->Write();
     hTowerEtaPhiEnergy[layer]->Write();
+    for (auto& hist : hTowerEtaPhiPt[layer]) hist->Write();
   }
 
   // Informational annotations; the original production configuration is
