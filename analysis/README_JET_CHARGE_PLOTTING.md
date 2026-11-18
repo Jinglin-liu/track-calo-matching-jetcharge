@@ -57,7 +57,7 @@ analysis/plots_run79516_unsubtracted/
         ...
         group_37.txt
     groups/
-        group_00/jetcharge_histograms.root   # 30 histograms + metadata
+        group_00/jetcharge_histograms.root   # 44 histograms + metadata
         ...
         group_37/jetcharge_histograms.root
     run79516_histograms.root                 # combined histograms
@@ -151,9 +151,9 @@ root -l -b -q 'merge_jetcharge_histograms.C("plots_run79516_unsubtracted/groups"
 ```
 
 This validates the presence of **38 distinct group directories**, the
-30 histograms' ROOT class/binning, jet mode labels, plotting cuts, and
+44 histograms' ROOT class/binning, jet mode labels, plotting cuts, and
 metadata before summing their bin contents. It saves a small combined ROOT
-file containing only the 30 histograms plus annotation and cut metadata.
+file containing only the 44 histograms plus annotation and cut metadata.
 Unlike raw `hadd`, it does **not accidentally sum per-group cut settings**.
 
 Check the result:
@@ -283,7 +283,7 @@ ROOT files without `jet_component_eta` and `jet_component_phi` cannot
 produce these histograms. Regenerate the histograms from the new TTree files;
 old small histogram ROOT files also lack the new plots.
 
-The histogram maker produces **30 histograms** in total: 13 original jet-charge
+The histogram maker produces **44 histograms** in total: 13 original jet-charge
 and jet-kinematics histograms, one selected-jet `hJetEtaPhi`, and for each of
 retowered EMCal, IHCal, OHCal four constituent histograms:
 `hTowerEta<Layer>`, `hTowerPhi<Layer>`, `hTowerEtaPhi<Layer>`, and
@@ -334,7 +334,7 @@ branches from `JetChargeTreeMaker`: `track_pt`, `track_charge`, `n_tracks`,
 production TTree; no new Fun4All production is required to make the additional
 plots.
 
-The histogram maker writes **30 histograms**. In particular:
+The histogram maker writes **44 histograms**. In particular:
 
 - `hTrackPt`: all saved tracks' pT, with log-spaced bins from 0.5 to 10,000 GeV/c (track quality/production cuts apply). The maker prints the maximum observed pT and overflow count for unusually large tracks.
 - `hTrackCharge`: charges of all saved tracks (not restricted to those matched to jets).
@@ -379,3 +379,68 @@ bash analysis/make_jetcharge_groups.sh --run 79516 --group 00 \\
 Recreate group histogram files (prefer a **fresh** output directory) before
 merging and drawing: earlier 26-histogram outputs lack the new track QA and
 10–15/15+ charge slices, and cannot be updated by rerunning the drawer alone.
+
+## Jet/track correlations and jet-pT-binned tower QA (44 histograms)
+
+The current branch keeps the histogram maker, group merger, and figure renderer separate.
+Both the existing selected-track QA page (`track_qa`) and the additional
+matched-track page (`matched_track_qa`) are available. Matching uses only
+tracks assigned to selected jets (`jet_pt >= minChargeJetPt`,
+`abs(jet_eta) < maxAbsEta`), whereas the saved-track charge/pT histograms
+still include all tracks satisfying the production track cuts.
+
+New histogram names:
+
+- `hNMatchedVsJetPt`: 2D jet pT (5–60 GeV/c, X) versus integer associated-track count (0–20, Y); jets with zero matches included.
+- `hDeltaRVsJetPt`: 2D jet pT (5–60 GeV/c, X) versus associated-track ΔR (0–0.4, Y); one entry per matched track.
+- `hMatchedTrackPt`, `hMatchedTrackCharge`: 1D matched-track QA, with the same pT bin edges as `hTrackPt`; `hMatchDeltaR` supplies the third panel.
+- `hSelectedJetPtSliceCount`: raw number of selected jets in the 5–10, 10–15 and ≥15 GeV/c intervals. Stored as a three-bin `TH1D` and merged by addition.
+- `hTowerEtaPhiPt{Cemc,Ihcal,Ohcal}{5to10,10to15,15plus}`: nine raw 2D constituent-tower occupancy histograms, separated by calorimeter layer and jet-pT slice. The same pT interval function in `JetChargePlotHelpers.h` is shared by jet charge and tower QA.
+
+The histogram maker writes only raw, mergeable occupancies. The renderer draws
+**both raw maps and per-selected-jet maps** in separate PNG/PDF files. The
+normalized bin contents equal raw constituent entries / selected jets in
+that pT interval, not occupancy divided by the total tower entries.
+Each three-panel page shares a fixed Z range across its pT panels for a
+given layer and normalization, but raw versus per-jet scales naturally differ.
+Zero-jet slices are kept empty and announced as warnings.
+
+The plot layout now has three output folders:
+
+```text
+figures/
+  analysis/                # jet-charge distributions and correlations
+  QA/                      # jet QA, all-track QA, matched-track QA,
+                           # jet pT vs Nmatched, jet pT vs DeltaR
+  tower_QA/                # earlier tower maps + by-pT raw and per-jet maps
+    tower_eta_phi_pt_Cemc_raw.png/.pdf
+    tower_eta_phi_pt_Cemc_per_jet.png/.pdf
+    tower_eta_phi_pt_Ihcal_raw.png/.pdf
+    tower_eta_phi_pt_Ihcal_per_jet.png/.pdf
+    tower_eta_phi_pt_Ohcal_raw.png/.pdf
+    tower_eta_phi_pt_Ohcal_per_jet.png/.pdf
+```
+
+The renderer has three optional boolean switches (all default to `true`):
+
+```cpp
+draw_jetcharge_histograms(histFile, outputDir, drawTowerQA, drawTrackQA, drawJetQA);
+plot_jetcharge_tree(inputSpec, outputDir, minJetPt, maxAbsEta,
+                     drawTowerQA, drawTrackQA, drawJetQA);
+```
+
+Analysis figures are always generated. To draw just analysis + track QA,
+for example:
+
+```bash
+cd analysis
+root -l -b -q 'draw_jetcharge_histograms.C("plots_run79516_wtower_QA/run79516_histograms.root","plots_run79516_wtower_QA/figures",false,true,false)'
+```
+
+Switches affect **figure generation only**, not histogram filling or merging;
+the single-step wrapper always prepares all required histograms.
+
+**Use a new histogram output directory or rerun all group histogram-making jobs
+with `--force` before merging.** Existing 30-histogram ROOT files cannot be
+drawn by the new renderer, and no original jet-charge TTree or Fun4All
+reconstruction output needs to be regenerated.
