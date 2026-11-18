@@ -20,15 +20,20 @@
 #include <TSystem.h>
 #include <TPad.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 int draw_jetcharge_histograms(const char* histogramFile,
-                                const char* outputDir = "jetcharge_plots")
+                                const char* outputDir = "jetcharge_plots",
+                                bool drawTowerQA = true,
+                                bool drawTrackQA = true,
+                                bool drawJetQA = true)
 {
   if (!histogramFile || !*histogramFile || !outputDir || !*outputDir)
   {
@@ -93,6 +98,22 @@ int draw_jetcharge_histograms(const char* histogramFile,
   TH2D* hChargeVsPt = nullptr;
   input.GetObject("hChargeVsPt", hChargeVsPt);
   if (!hChargeVsPt) { std::cerr << "ERROR: missing or incorrect hChargeVsPt in " << histogramFile << '\n'; return 1; }
+  TH2D* hNMatchedVsJetPt = nullptr;
+  input.GetObject("hNMatchedVsJetPt", hNMatchedVsJetPt);
+  if (!hNMatchedVsJetPt) { std::cerr << "ERROR: missing hNMatchedVsJetPt\n"; return 1; }
+  TH2D* hDeltaRVsJetPt = nullptr;
+  input.GetObject("hDeltaRVsJetPt", hDeltaRVsJetPt);
+  if (!hDeltaRVsJetPt) { std::cerr << "ERROR: missing hDeltaRVsJetPt\n"; return 1; }
+  TH1D* hMatchedTrackPt = nullptr;
+  input.GetObject("hMatchedTrackPt", hMatchedTrackPt);
+  if (!hMatchedTrackPt) { std::cerr << "ERROR: missing hMatchedTrackPt\n"; return 1; }
+  TH1D* hMatchedTrackCharge = nullptr;
+  input.GetObject("hMatchedTrackCharge", hMatchedTrackCharge);
+  if (!hMatchedTrackCharge) { std::cerr << "ERROR: missing hMatchedTrackCharge\n"; return 1; }
+  TH1D* hSelectedJetPtSliceCount = nullptr;
+  input.GetObject("hSelectedJetPtSliceCount", hSelectedJetPtSliceCount);
+  if (!hSelectedJetPtSliceCount) { std::cerr << "ERROR: missing hSelectedJetPtSliceCount\n"; return 1; }
+
   // New constituent-geometry histograms (the maker requires geometry branches).
   TH2D* hJetEtaPhi = nullptr;
   input.GetObject("hJetEtaPhi", hJetEtaPhi);
@@ -107,13 +128,21 @@ int draw_jetcharge_histograms(const char* histogramFile,
   std::array<TH1D*, 3> hTowerPhi{};
   std::array<TH2D*, 3> hTowerEtaPhi{};
   std::array<TH2D*, 3> hTowerEtaPhiEnergy{};
+  std::array<std::array<TH2D*, 3>, 3> hTowerEtaPhiPt{};
   for (std::size_t i = 0; i < caloSuffix.size(); ++i)
   {
     input.GetObject(("hTowerEta" + caloSuffix[i]).c_str(), hTowerEta[i]);
     input.GetObject(("hTowerPhi" + caloSuffix[i]).c_str(), hTowerPhi[i]);
     input.GetObject(("hTowerEtaPhi" + caloSuffix[i]).c_str(), hTowerEtaPhi[i]);
     input.GetObject(("hTowerEtaPhiEnergy" + caloSuffix[i]).c_str(), hTowerEtaPhiEnergy[i]);
-    if (!hTowerEta[i] || !hTowerPhi[i] || !hTowerEtaPhi[i] || !hTowerEtaPhiEnergy[i])
+    for (std::size_t p = 0; p < JetChargePlots::kJetPtSliceSuffix.size(); ++p)
+      input.GetObject(("hTowerEtaPhiPt" + caloSuffix[i] +
+                       JetChargePlots::kJetPtSliceSuffix[p]).c_str(),
+                      hTowerEtaPhiPt[i][p]);
+    if (!hTowerEta[i] || !hTowerPhi[i] || !hTowerEtaPhi[i] ||
+        !hTowerEtaPhiEnergy[i] ||
+        std::any_of(hTowerEtaPhiPt[i].begin(), hTowerEtaPhiPt[i].end(),
+                    [](const TH2D* h) { return !h; }))
     {
       std::cerr << "ERROR: missing constituent tower QA histograms for "
                 << caloTitle[i] << "; regenerate histogram ROOT file.\n";
@@ -139,7 +168,11 @@ int draw_jetcharge_histograms(const char* histogramFile,
 
   const std::string qaDir = std::string(outputDir) + "/QA";
   const std::string analysisDir = std::string(outputDir) + "/analysis";
-  for (const auto& dir : {qaDir, analysisDir})
+  const std::string towerDir = std::string(outputDir) + "/tower_QA";
+  std::vector<std::string> dirs = {analysisDir};
+  if (drawJetQA || drawTrackQA) dirs.push_back(qaDir);
+  if (drawTowerQA) dirs.push_back(towerDir);
+  for (const auto& dir : dirs)
   {
     if (gSystem->mkdir(dir.c_str(), true) != 0 &&
         gSystem->AccessPathName(dir.c_str()))
@@ -262,6 +295,32 @@ int draw_jetcharge_histograms(const char* histogramFile,
   cTrackQA->cd(3);
   plot1d(hMatchDeltaR, kBlue + 1, false);
 
+  auto cMatchedTrackQA = std::make_unique<TCanvas>(
+      "cMatchedTrackQA", "Tracks matched to selected jets", 1500, 500);
+  cMatchedTrackQA->Divide(3, 1);
+  cMatchedTrackQA->cd(1);
+  plot1d(hMatchedTrackCharge, kBlue + 1, true);
+  cMatchedTrackQA->cd(2);
+  gPad->SetLogx(true);
+  plot1d(hMatchedTrackPt, kRed + 1, true);
+  cMatchedTrackQA->cd(3);
+  plot1d(hMatchDeltaR, kBlue + 1);
+
+  // Jet-to-track correlations: jet pT on the horizontal axis.
+  auto cNMatchedVsJetPt = std::make_unique<TCanvas>(
+      "cNMatchedVsJetPt", "Jet pT vs associated tracks", 950, 720);
+  cNMatchedVsJetPt->cd();
+  gPad->SetRightMargin(0.16);
+  gPad->SetLogz(true);
+  hNMatchedVsJetPt->Draw("COLZ");
+
+  auto cDeltaRVsJetPt = std::make_unique<TCanvas>(
+      "cDeltaRVsJetPt", "Jet pT vs matching DeltaR", 950, 720);
+  cDeltaRVsJetPt->cd();
+  gPad->SetRightMargin(0.16);
+  gPad->SetLogz(true);
+  hDeltaRVsJetPt->Draw("COLZ");
+
   // Dedicated analysis plots for matched-track multiplicity and jet charge vs pT.
   auto cMatchedTracks = std::make_unique<TCanvas>(
       "cMatchedTracks", "Associated tracks per selected jet", 900, 680);
@@ -298,6 +357,7 @@ int draw_jetcharge_histograms(const char* histogramFile,
   // eta-phi occupancy/energy diagnostic. Axes are physical, vertex-corrected.
   std::array<std::unique_ptr<TCanvas>, 3> cTowerGeometry;
   std::array<std::unique_ptr<TCanvas>, 3> cTowerMaps;
+  if (drawTowerQA)
   for (std::size_t i = 0; i < caloSuffix.size(); ++i)
   {
     cTowerGeometry[i] = std::make_unique<TCanvas>(
@@ -326,9 +386,56 @@ int draw_jetcharge_histograms(const char* histogramFile,
              {cTowerGeometry[i].get(), "tower_geometry_1d_" + caloSuffix[i]},
              {cTowerMaps[i].get(), "tower_eta_phi_" + caloSuffix[i]}}})
     {
-      const std::string path = qaDir + "/" + output.second;
+      const std::string path = towerDir + "/" + output.second;
       output.first->SaveAs((path + ".png").c_str());
       output.first->SaveAs((path + ".pdf").c_str());
+    }
+
+    // Clone raw count maps before normalization; group histograms remain additive.
+    std::array<std::unique_ptr<TH2D>, 3> normalizedMaps;
+    double rawMax = 0., normMax = 0.;
+    for (std::size_t p = 0; p < 3; ++p)
+    {
+      rawMax = std::max(rawMax, hTowerEtaPhiPt[i][p]->GetMaximum());
+      normalizedMaps[p].reset(
+          dynamic_cast<TH2D*>(hTowerEtaPhiPt[i][p]->Clone(
+              ("hTowerNormalizedDraw" + caloSuffix[i] +
+               JetChargePlots::kJetPtSliceSuffix[p]).c_str())));
+      normalizedMaps[p]->SetDirectory(nullptr);
+      const double nJets = hSelectedJetPtSliceCount->GetBinContent(p + 1);
+      if (nJets > 0.)
+      {
+        normalizedMaps[p]->Scale(1. / nJets);
+        normMax = std::max(normMax, normalizedMaps[p]->GetMaximum());
+      }
+      else
+      {
+        std::cerr << "WARNING: no selected jets for tower QA pT slice "
+                  << JetChargePlots::kJetPtSliceLabel[p] << '\n';
+        normalizedMaps[p]->Reset();
+      }
+    }
+
+    for (int normalized = 0; normalized <= 1; ++normalized)
+    {
+      auto canvas = std::make_unique<TCanvas>(
+          Form("cTowerPt%s_%d", caloSuffix[i].c_str(), normalized),
+          (caloTitle[i] + " pT-binned tower occupancy").c_str(), 1650, 540);
+      canvas->Divide(3, 1);
+      for (std::size_t p = 0; p < 3; ++p)
+      {
+        canvas->cd(p + 1);
+        gPad->SetRightMargin(0.17);
+        gPad->SetLogz(false);
+        TH2D* hist = normalized ? normalizedMaps[p].get() : hTowerEtaPhiPt[i][p];
+        hist->SetMinimum(0.);
+        hist->SetMaximum(normalized ? normMax : rawMax);
+        hist->Draw("COLZ");
+      }
+      const std::string stem = towerDir + "/tower_eta_phi_pt_" +
+          caloSuffix[i] + (normalized ? "_per_jet" : "_raw");
+      canvas->SaveAs((stem + ".png").c_str());
+      canvas->SaveAs((stem + ".pdf").c_str());
     }
   }
 
@@ -338,13 +445,19 @@ int draw_jetcharge_histograms(const char* histogramFile,
   gPad->SetRightMargin(0.16);
   hJetEtaPhi->Draw("COLZ");
   const std::string jetMapPath = qaDir + "/jet_eta_phi";
-  cJetEtaPhi->SaveAs((jetMapPath + ".png").c_str());
-  cJetEtaPhi->SaveAs((jetMapPath + ".pdf").c_str());
+  if (drawJetQA)
+  {
+    cJetEtaPhi->SaveAs((jetMapPath + ".png").c_str());
+    cJetEtaPhi->SaveAs((jetMapPath + ".pdf").c_str());
+  }
 
   struct OutputCanvas { TCanvas* canvas; const char* name; const std::string* directory; };
   const OutputCanvas outputs[] = {
       {cJetQA.get(), "jet_qa", &qaDir},
       {cTrackQA.get(), "track_qa", &qaDir},
+      {cMatchedTrackQA.get(), "matched_track_qa", &qaDir},
+      {cNMatchedVsJetPt.get(), "jet_pt_vs_nmatched", &qaDir},
+      {cDeltaRVsJetPt.get(), "delta_r_vs_jet_pt", &qaDir},
       {cPt.get(), "jet_pt_spectrum", &qaDir},
       {cMass.get(), "jet_mass", &qaDir},
       {cChargeQA.get(), "jet_charge_overview", &analysisDir},
@@ -354,13 +467,18 @@ int draw_jetcharge_histograms(const char* histogramFile,
 
   for (const auto& item : outputs)
   {
+    const std::string name = item.name;
+    const bool isTrack = name == "track_qa" || name == "matched_track_qa";
+    const bool isJet = item.directory == &qaDir && !isTrack;
+    if ((isTrack && !drawTrackQA) || (isJet && !drawJetQA)) continue;
     const std::string path = *item.directory + "/" + item.name;
     item.canvas->SaveAs((path + ".png").c_str());
     item.canvas->SaveAs((path + ".pdf").c_str());
   }
 
 
-  std::cout << "QA figures: " << qaDir << '\n'
-            << "Analysis figures: " << analysisDir << '\n';
+  std::cout << "Analysis figures: " << analysisDir << '\n';
+  if (drawJetQA || drawTrackQA) std::cout << "QA figures: " << qaDir << '\n';
+  if (drawTowerQA) std::cout << "Tower figures: " << towerDir << '\n';
   return 0;
 }
