@@ -67,7 +67,7 @@ int JetChargeTreeMaker::Init(PHCompositeNode*)
     return Fun4AllReturnCodes::ABORTRUN;
   }
   m_output->cd();
-  m_tree = new TTree("JetChargeInputTree",
+  m_tree = new TTree("JetChargeTree",
                      "One event per entry: reconstructed tracks and calorimeter jets");
 
 #define BRANCH(name, member) m_tree->Branch(name, &member)
