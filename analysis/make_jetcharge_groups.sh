@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Make 44 QA and analysis histograms (including constituent tower eta/phi) per group without merging TTrees.
 # The original fileLists/*_NN.list rows define the EXACT expected output ROOT
-# filenames, including tracking segment and skip. Missing outputs fail loudly.
+# filenames, including tracking segment and skip. Supports new and legacy filename prefixes; missing or ambiguous outputs fail loudly.
 #
 # From anywhere:
 #   bash analysis/make_jetcharge_groups.sh --run 79516
@@ -143,11 +143,23 @@ for list in "${selected[@]}"; do
       rm -f "$tmp_manifest"; exit 1;
     }
     printf -v skip5 '%05d' "$((10#$skip))"
-    path="$input_dir/jet_charge_inputs_${mode}_${run8}_${segment}_${skip5}.root"
-    [[ -f "$path" ]] || {
-      echo "ERROR: missing expected ROOT file: $path" >&2
-      rm -f "$tmp_manifest"; exit 1;
-    }
+    # Accept both generations. Future production writes jet_charge_MODE_...,
+    # while the Run 79516 production already on disk uses jet_charge_inputs_MODE_...
+    new_path="$input_dir/jet_charge_${mode}_${run8}_${segment}_${skip5}.root"
+    old_path="$input_dir/jet_charge_inputs_${mode}_${run8}_${segment}_${skip5}.root"
+    if [[ -f "$new_path" && -f "$old_path" ]]; then
+      echo "ERROR: ambiguous new and legacy ROOT files for segment $segment skip $skip5:" >&2
+      printf '  %s\\n  %s\\n' "$new_path" "$old_path" >&2
+      rm -f "$tmp_manifest"; exit 1
+    elif [[ -f "$new_path" ]]; then
+      path="$new_path"
+    elif [[ -f "$old_path" ]]; then
+      path="$old_path"
+    else
+      echo "ERROR: missing expected ROOT file (checked both names):" >&2
+      printf '  %s\\n  %s\\n' "$new_path" "$old_path" >&2
+      rm -f "$tmp_manifest"; exit 1
+    fi
     printf '%s\n' "$path" >> "$tmp_manifest"
     ((count += 1))
   done < "$list"
