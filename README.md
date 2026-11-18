@@ -142,7 +142,7 @@ no additional constituent cut. To run the **TrackToCalo-only** example,
 pass `false unsubtracted true 0.0` as arguments 5–8. For current jet-charge
 tests, pass `true unsubtracted false 0.5` instead. If enabled, TrackToCalo
 writes `track_calo_pairs_RUN_SEGMENT_SKIP.root` with `TrackCaloTree`;
-JetChargeTreeMaker writes `jet_charge_inputs_MODE_RUN_SEGMENT_SKIP.root`.
+JetChargeTreeMaker now writes `jet_charge_MODE_RUN_SEGMENT_SKIP.root`, containing the `JetChargeTree` TTree. Legacy Run 79516 outputs remain named `jet_charge_inputs_MODE_RUN_SEGMENT_SKIP.root` and contain `JetChargeInputTree`; the histogram maker accepts both formats, and the group-manifest script finds either filename prefix.
 For a reproducible Run25 setup, follow the linked jet-charge guide.
 
 The tree stores event identifiers, track ID, `track_momentum`, the projected
