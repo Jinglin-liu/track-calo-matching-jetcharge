@@ -1,4 +1,4 @@
-// Merge all 26 jet-charge and constituent geometry QA histograms from per-group ROOT files.
+// Merge all 44 jet-charge and constituent geometry QA histograms from per-group ROOT files.
 // Validates each group's plotting cuts, reconstruction labels and binning.
 // This avoids ROOT hadd's ambiguous behavior for non-histogram metadata.
 // Example (from analysis/):
@@ -68,7 +68,12 @@ int merge_jetcharge_histograms(const char* groupsDir,
     "hTrackPt", "hTrackCharge", "hMatchDeltaR", "hJetEtaPhi",
     "hTowerEtaCemc", "hTowerPhiCemc", "hTowerEtaPhiCemc", "hTowerEtaPhiEnergyCemc",
     "hTowerEtaIhcal", "hTowerPhiIhcal", "hTowerEtaPhiIhcal", "hTowerEtaPhiEnergyIhcal",
-    "hTowerEtaOhcal", "hTowerPhiOhcal", "hTowerEtaPhiOhcal", "hTowerEtaPhiEnergyOhcal"};
+    "hTowerEtaOhcal", "hTowerPhiOhcal", "hTowerEtaPhiOhcal", "hTowerEtaPhiEnergyOhcal",
+    "hNMatchedVsJetPt", "hDeltaRVsJetPt",
+    "hMatchedTrackPt", "hMatchedTrackCharge", "hSelectedJetPtSliceCount",
+    "hTowerEtaPhiPtCemc5to10", "hTowerEtaPhiPtCemc10to15", "hTowerEtaPhiPtCemc15plus",
+    "hTowerEtaPhiPtIhcal5to10", "hTowerEtaPhiPtIhcal10to15", "hTowerEtaPhiPtIhcal15plus",
+    "hTowerEtaPhiPtOhcal5to10", "hTowerEtaPhiPtOhcal10to15", "hTowerEtaPhiPtOhcal15plus"};
   TH1::AddDirectory(kFALSE);
   std::map<std::string, std::unique_ptr<TH1>> merged;
   std::string mode, jetTag, towerTag;
