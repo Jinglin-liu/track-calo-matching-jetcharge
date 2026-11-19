@@ -235,12 +235,12 @@ int make_jetcharge_histograms(const char* inputSpec,
       "hNMatched", "Track-to-jet matching;Matched tracks per jet;Jets", 21, -0.5, 20.5);
   auto hNMatchedVsJetPt = std::make_unique<TH2D>(
       "hNMatchedVsJetPt",
-      "Associated tracks vs jet p_{T};Jet p_{T} [GeV/c];Matched tracks per jet",
-      110, 5, 60, 21, -0.5, 20.5);
+      "Jet p_{T} vs associated tracks;Matched tracks per jet;Jet p_{T} [GeV/c]",
+      21, -0.5, 20.5, 110, 5, 60);
   auto hDeltaRVsJetPt = std::make_unique<TH2D>(
       "hDeltaRVsJetPt",
-      "Track-jet #DeltaR vs jet p_{T};Jet p_{T} [GeV/c];#DeltaR(track,jet)",
-      110, 5, 60, 80, 0, 0.4);
+      "Jet p_{T} vs track-jet #DeltaR;#DeltaR(track, jet);Jet p_{T} [GeV/c]",
+      80, 0, 0.4, 110, 5, 60);
   auto hChargeVsPt = std::make_unique<TH2D>(
       "hChargeVsPt", "Jet charge vs p_{T} (matched jets);Jet p_{T} [GeV/c];Q^{#kappa}",
       100, 0, 30, 120, -4, 4);
@@ -460,7 +460,7 @@ int make_jetcharge_histograms(const char* inputSpec,
       }
       if (std::isfinite(jetMass->at(j))) hMass->Fill(jetMass->at(j));
       hNMatched->Fill(matched);
-      hNMatchedVsJetPt->Fill(pt, matched);
+      hNMatchedVsJetPt->Fill(matched, pt);
       const int ptSlice = JetChargePlots::jetPtSlice(pt);
       if (ptSlice >= 0) hSelectedJetPtSliceCount->Fill(ptSlice + 1);
 
@@ -482,7 +482,7 @@ int make_jetcharge_histograms(const char* inputSpec,
           return 1;
         }
         hMatchDeltaR->Fill(deltaR);
-        hDeltaRVsJetPt->Fill(pt, deltaR);
+        hDeltaRVsJetPt->Fill(deltaR, pt);
         const auto trackIndex = trackMatchIndex->at(m);
         hMatchedTrackPt->Fill(trackPt->at(trackIndex));
         hMatchedTrackCharge->Fill(trackCharge->at(trackIndex));
