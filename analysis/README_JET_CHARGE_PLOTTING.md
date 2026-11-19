@@ -418,8 +418,8 @@ still include all tracks satisfying the production track cuts.
 
 New histogram names:
 
-- `hNMatchedVsJetPt`: 2D jet pT (5–60 GeV/c, X) versus integer associated-track count (0–20, Y); jets with zero matches included.
-- `hDeltaRVsJetPt`: 2D jet pT (5–60 GeV/c, X) versus associated-track ΔR (0–0.4, Y); one entry per matched track.
+- `hNMatchedVsJetPt`: 2D associated-track multiplicity (0–20, X) versus jet pT (5–60 GeV/c, Y); jets with zero matches included.
+- `hDeltaRVsJetPt`: 2D associated-track ΔR (0–0.4, X) versus jet pT (5–60 GeV/c, Y); one entry per matched track.
 - `hMatchedTrackPt`, `hMatchedTrackCharge`: 1D matched-track QA, with the same pT bin edges as `hTrackPt`; `hMatchDeltaR` supplies the third panel.
 - `hSelectedJetPtSliceCount`: raw number of selected jets in the 5–10, 10–15 and ≥15 GeV/c intervals. Stored as a three-bin `TH1D` and merged by addition.
 - `hTowerEtaPhiPt{Cemc,Ihcal,Ohcal}{5to10,10to15,15plus}`: nine raw 2D constituent-tower occupancy histograms, separated by calorimeter layer and jet-pT slice. The same pT interval function in `JetChargePlotHelpers.h` is shared by jet charge and tower QA.
