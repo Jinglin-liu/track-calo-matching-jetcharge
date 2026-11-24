@@ -107,6 +107,9 @@ int draw_jetcharge_histograms(const char* histogramFile,
   TH1D* hMatchedTrackPt = nullptr;
   input.GetObject("hMatchedTrackPt", hMatchedTrackPt);
   if (!hMatchedTrackPt) { std::cerr << "ERROR: missing hMatchedTrackPt\n"; return 1; }
+  TH1D* hMatchedTrackPtJetLe60 = nullptr;
+  input.GetObject("hMatchedTrackPtJetLe60", hMatchedTrackPtJetLe60);
+  if (!hMatchedTrackPtJetLe60) { std::cerr << "ERROR: missing hMatchedTrackPtJetLe60; regenerate group histograms\n"; return 1; }
   TH1D* hMatchedTrackCharge = nullptr;
   input.GetObject("hMatchedTrackCharge", hMatchedTrackCharge);
   if (!hMatchedTrackCharge) { std::cerr << "ERROR: missing hMatchedTrackCharge\n"; return 1; }
@@ -303,6 +306,17 @@ int draw_jetcharge_histograms(const char* histogramFile,
   cMatchedTrackQA->cd(2);
   gPad->SetLogx(true);
   plot1d(hMatchedTrackPt, kRed + 1, true);
+  hMatchedTrackPtJetLe60->SetLineColor(kBlue + 1);
+  hMatchedTrackPtJetLe60->SetLineWidth(2);
+  hMatchedTrackPtJetLe60->SetLineStyle(2);
+  hMatchedTrackPtJetLe60->Draw("HIST SAME");
+  TLegend matchedPtLegend(0.40, 0.73, 0.89, 0.89);
+  matchedPtLegend.SetBorderSize(0);
+  matchedPtLegend.SetFillStyle(0);
+  matchedPtLegend.SetTextSize(0.032);
+  matchedPtLegend.AddEntry(hMatchedTrackPt, "All selected jets", "l");
+  matchedPtLegend.AddEntry(hMatchedTrackPtJetLe60, "Jet p_{T} #leq 60 GeV/c", "l");
+  matchedPtLegend.Draw();
   cMatchedTrackQA->cd(3);
   plot1d(hMatchDeltaR, kBlue + 1);
 
