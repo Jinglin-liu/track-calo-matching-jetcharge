@@ -1,4 +1,4 @@
-// Merge all 44 jet-charge and constituent geometry QA histograms from per-group ROOT files.
+// Merge all 45 jet-charge and constituent geometry QA histograms from per-group ROOT files.
 // Validates each group's plotting cuts, reconstruction labels and binning.
 // This avoids ROOT hadd's ambiguous behavior for non-histogram metadata.
 // Example (from analysis/):
@@ -70,7 +70,7 @@ int merge_jetcharge_histograms(const char* groupsDir,
     "hTowerEtaIhcal", "hTowerPhiIhcal", "hTowerEtaPhiIhcal", "hTowerEtaPhiEnergyIhcal",
     "hTowerEtaOhcal", "hTowerPhiOhcal", "hTowerEtaPhiOhcal", "hTowerEtaPhiEnergyOhcal",
     "hNMatchedVsJetPt", "hDeltaRVsJetPt",
-    "hMatchedTrackPt", "hMatchedTrackCharge", "hSelectedJetPtSliceCount",
+    "hMatchedTrackPt", "hMatchedTrackPtJetLe60", "hMatchedTrackCharge", "hSelectedJetPtSliceCount",
     "hTowerEtaPhiPtCemc5to10", "hTowerEtaPhiPtCemc10to15", "hTowerEtaPhiPtCemc15plus",
     "hTowerEtaPhiPtIhcal5to10", "hTowerEtaPhiPtIhcal10to15", "hTowerEtaPhiPtIhcal15plus",
     "hTowerEtaPhiPtOhcal5to10", "hTowerEtaPhiPtOhcal10to15", "hTowerEtaPhiPtOhcal15plus"};
