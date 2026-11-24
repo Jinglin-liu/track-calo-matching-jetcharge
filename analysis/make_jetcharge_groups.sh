@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Make 44 QA and analysis histograms (including constituent tower eta/phi) per group without merging TTrees.
+# Make 45 QA and analysis histograms (including constituent tower eta/phi) per group without merging TTrees.
 # The original fileLists/*_NN.list rows define the EXACT expected output ROOT
 # filenames, including tracking segment and skip. Supports new and legacy filename prefixes; missing or ambiguous outputs fail loudly.
 #
