@@ -4,7 +4,7 @@
 // root -l -b -q 'make_jetcharge_histograms.C("../root/trackcalomatch_5GeV_unsub_run79516/jet_charge_inputs_unsubtracted_00079516_*.root","plots_run79516/jetcharge_histograms.root",5.0,0.7)'
 //
 // Returns 0 on success, nonzero on error for ROOT batch-mode exit status.
-// Each call writes 44 histograms; no event-level TTree is copied.
+// Each call writes 45 histograms; no event-level TTree is copied.
 // Batch manifests must list one ROOT file path per line (blank/# skipped).
 // Use the same cuts and identical binning in every group before hadd.
 
@@ -260,6 +260,10 @@ int make_jetcharge_histograms(const char* inputSpec,
   auto hMatchedTrackPt = std::make_unique<TH1D>(
       "hMatchedTrackPt", "Selected-jet associated track p_{T};Track p_{T} [GeV/c];Matched tracks",
       nTrackPtBins, trackPtEdges.data());
+  auto hMatchedTrackPtJetLe60 = std::make_unique<TH1D>(
+      "hMatchedTrackPtJetLe60",
+      "Matched tracks in selected jets with p_{T}^{jet} #leq 60 GeV/c;Track p_{T} [GeV/c];Matched tracks",
+      nTrackPtBins, trackPtEdges.data());
   auto hMatchedTrackCharge = std::make_unique<TH1D>(
       "hMatchedTrackCharge", "Selected-jet associated track charge;Track charge [e];Matched tracks",
       7, -3.5, 3.5);
@@ -485,6 +489,7 @@ int make_jetcharge_histograms(const char* inputSpec,
         hDeltaRVsJetPt->Fill(deltaR, pt);
         const auto trackIndex = trackMatchIndex->at(m);
         hMatchedTrackPt->Fill(trackPt->at(trackIndex));
+        if (pt <= 60.0) hMatchedTrackPtJetLe60->Fill(trackPt->at(trackIndex));
         hMatchedTrackCharge->Fill(trackCharge->at(trackIndex));
       }
 
@@ -570,7 +575,8 @@ int make_jetcharge_histograms(const char* inputSpec,
   hTrackPt->Write(); hTrackCharge->Write(); hMatchDeltaR->Write();
   hNMatched->Write(); hChargeVsPt->Write();
   hNMatchedVsJetPt->Write(); hDeltaRVsJetPt->Write();
-  hMatchedTrackPt->Write(); hMatchedTrackCharge->Write();
+  hMatchedTrackPt->Write(); hMatchedTrackPtJetLe60->Write();
+  hMatchedTrackCharge->Write();
   hSelectedJetPtSliceCount->Write();
   hJetEtaPhi->Write();
   for (std::size_t layer = 0; layer < caloSuffix.size(); ++layer)
