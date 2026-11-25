@@ -21,7 +21,7 @@ executable            = $(RepoDir)/scripts/runTrackCaloMatch.sh
 request_memory        = 6GB
 job_lease_duration    = 3600
 
-OutDir                = $(RepoDir)/root/trackcalomatch_5GeV_unsub
+OutDir                = /sphenix/tg/tg01/jets/jlnliu/JetChargeTree/trackcalomatch_5GeV_unsub_wtower
 output                = $(RepoDir)/log/trackcalomatch_prod-$(Cluster)-$(Process).out
 error                 = $(RepoDir)/log/trackcalomatch_prod-$(Cluster)-$(Process).err
 log                   = /tmp/jlnliu/trackcalomatch_prod-$(Cluster)-$(Process).log
